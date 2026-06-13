@@ -1,0 +1,458 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { User } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+
+interface AuthContextType {
+  user: User | null;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => void;
+  updateUser: (updates: Partial<User>) => Promise<void>;
+  reloadProfile: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Helper to load user profile and skills from Supabase database
+  const loadUserProfile = async (userId: string, email: string): Promise<User | null> => {
+    try {
+      let profile = null;
+      let attempts = 0;
+
+      // Resilient lookup with retries to account for trigger propagation delay
+      while (attempts < 3) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
+        
+        if (data) {
+          profile = data;
+          break;
+        }
+        attempts++;
+        await new Promise((r) => setTimeout(r, 800));
+      }
+
+      // Fallback if trigger didn't create the profile automatically
+      if (!profile) {
+        const { data: newProfile, error: insertError } = await supabase
+          .from("profiles")
+          .insert({
+            id: userId,
+            name: email.split("@")[0] || "New Builder",
+            email: email,
+            role: "Full Stack Developer",
+            bio: "Excited to build together!",
+            availability: "available",
+            trust_score: 25,
+            rating: 5.0,
+          })
+          .select("*")
+          .single();
+
+        if (insertError) {
+          console.error("Error creating profile fallback:", insertError);
+          return null;
+        }
+        profile = newProfile;
+      }
+
+      // Fetch user skills from join table
+      const { data: userSkillsData, error: skillsError } = await supabase
+        .from("user_skills")
+        .select("skills (name)")
+        .eq("user_id", userId);
+
+      if (skillsError) {
+        console.error("Error fetching user skills:", skillsError);
+      }
+
+      const skills = userSkillsData
+        ? userSkillsData.map((us: any) => us.skills?.name).filter(Boolean)
+        : [];
+
+      // Fetch education, experience, projects, domains
+      const { data: eduData, error: eduError } = await supabase
+        .from("user_education")
+        .select("*")
+        .eq("user_id", userId);
+      if (eduError) console.error("Error fetching education:", eduError);
+
+      const { data: expData, error: expError } = await supabase
+        .from("user_experience")
+        .select("*")
+        .eq("user_id", userId);
+      if (expError) console.error("Error fetching experience:", expError);
+
+      const { data: projData, error: projError } = await supabase
+        .from("user_projects")
+        .select("*")
+        .eq("user_id", userId);
+      if (projError) console.error("Error fetching projects:", projError);
+
+      const { data: domainData, error: domainError } = await supabase
+        .from("user_domains")
+        .select("domain")
+        .eq("user_id", userId);
+      if (domainError) console.error("Error fetching domains:", domainError);
+      const domains = domainData ? domainData.map((d: any) => d.domain) : [];
+
+      return {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        avatar: profile.linkedin_avatar || profile.github_avatar || profile.avatar_url || undefined,
+        role: profile.role || "Full Stack Developer",
+        skills: skills,
+        location: profile.location || "",
+        bio: profile.bio || "",
+        github: profile.github_url || undefined,
+        linkedin: profile.linkedin_url || undefined,
+        trustScore: profile.trust_score || 0,
+        availability: profile.availability || "available",
+        rating: Number(profile.rating) || 5.0,
+        college: profile.college || "",
+        experience: profile.experience || "",
+        isOnline: true,
+        badges: ["Top Builder"],
+        github_username: profile.github_username || undefined,
+        github_avatar: profile.github_avatar || undefined,
+        github_connected: profile.github_connected || false,
+        github_connected_at: profile.github_connected_at || undefined,
+        linkedin_url: profile.linkedin_url || undefined,
+        linkedin_name: profile.linkedin_name || undefined,
+        linkedin_avatar: profile.linkedin_avatar || undefined,
+        linkedin_connected: profile.linkedin_connected || false,
+        linkedin_connected_at: profile.linkedin_connected_at || undefined,
+        education: eduData || [],
+        experiences: expData || [],
+        projects: projData || [],
+        domains: domains,
+      };
+    } catch (err) {
+      console.error("Exception in loadUserProfile:", err);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    // 1. Check if the URL contains OAuth cancellation errors
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const oauthError = params.get("error") || hashParams.get("error");
+    const oauthErrorDesc = params.get("error_description") || hashParams.get("error_description");
+
+    if (oauthError) {
+      const provider = sessionStorage.getItem("oauth_provider");
+      const isLinkedIn = provider === "linkedin";
+
+      if (oauthError === "access_denied" || oauthErrorDesc?.toLowerCase().includes("cancel")) {
+        if (isLinkedIn) {
+          toast.error("LinkedIn connection cancelled");
+        } else {
+          toast.error("GitHub connection cancelled");
+        }
+      } else {
+        if (isLinkedIn) {
+          if (oauthErrorDesc?.toLowerCase().includes("not_enabled") || oauthErrorDesc?.toLowerCase().includes("disabled")) {
+            toast.error("LinkedIn provider is not enabled in Supabase");
+          } else {
+            toast.error("Unable to connect LinkedIn");
+          }
+        } else {
+          toast.error("Unable to connect GitHub");
+        }
+      }
+      // Remove OAuth error query parameters from URL to avoid re-triggering toast
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState(null, "", cleanUrl);
+      sessionStorage.removeItem("oauth_provider");
+    }
+
+    // 2. Check current active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user.id, session.user.email || "")
+          .then((loadedUser) => {
+            setUser(loadedUser);
+            setIsLoading(false);
+          })
+          .catch(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    // 3. Listen for auth changes to capture newly linked GitHub/LinkedIn metadata
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          const oauthProvider = sessionStorage.getItem("oauth_provider");
+
+          // Sync GitHub details
+          if (oauthProvider === "github") {
+            const metadata = session.user.user_metadata;
+            const username = metadata.preferred_username || metadata.user_name || "";
+            const avatar = metadata.avatar_url || "";
+            const githubUrl = `https://github.com/${username}`;
+
+            // Check if user was already marked connected in the database
+            const { data: currentProfile } = await supabase
+              .from("profiles")
+              .select("github_connected")
+              .eq("id", session.user.id)
+              .maybeSingle();
+
+            const isNewConnection = !currentProfile || !currentProfile.github_connected;
+
+            const { error: syncError } = await supabase
+              .from("profiles")
+              .update({
+                github_username: username,
+                github_url: githubUrl,
+                github_avatar: avatar,
+                github_connected: true,
+                github_connected_at: new Date().toISOString(),
+              })
+              .eq("id", session.user.id);
+
+            if (syncError) {
+              console.error("Failed to sync GitHub OAuth metadata to database:", syncError.message);
+            } else {
+              sessionStorage.removeItem("oauth_provider");
+              if (isNewConnection) {
+                toast.success("✓ GitHub Connected");
+              }
+            }
+          }
+
+          // Sync LinkedIn details
+          if (oauthProvider === "linkedin") {
+            const metadata = session.user.user_metadata;
+            const name = metadata.full_name || metadata.name || "";
+            const avatar = metadata.avatar_url || metadata.picture || null;
+            const username = metadata.preferred_username || "";
+            const linkedinUrl = username ? `https://www.linkedin.com/in/${username}` : null;
+
+            // Check if user was already marked connected in the database
+            const { data: currentProfile } = await supabase
+              .from("profiles")
+              .select("linkedin_connected")
+              .eq("id", session.user.id)
+              .maybeSingle();
+
+            const isNewConnection = !currentProfile || !currentProfile.linkedin_connected;
+
+            const { error: syncError } = await supabase
+              .from("profiles")
+              .update({
+                linkedin_name: name,
+                linkedin_avatar: avatar,
+                linkedin_url: linkedinUrl,
+                linkedin_connected: true,
+                linkedin_connected_at: new Date().toISOString(),
+              })
+              .eq("id", session.user.id);
+
+            if (syncError) {
+              console.error("Failed to sync LinkedIn OAuth metadata to database:", syncError.message);
+            } else {
+              sessionStorage.removeItem("oauth_provider");
+              if (isNewConnection) {
+                toast.success("✓ LinkedIn Connected");
+              }
+            }
+          }
+
+          const loadedUser = await loadUserProfile(session.user.id, session.user.email || "");
+          setUser(loadedUser);
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (data.user) {
+      const loadedUser = await loadUserProfile(data.user.id, data.user.email || "");
+      setUser(loadedUser);
+    }
+  };
+
+  const signup = async (name: string, email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (data.user) {
+      if (data.session) {
+        const loadedUser = await loadUserProfile(data.user.id, data.user.email || "");
+        setUser(loadedUser);
+      } else {
+        await supabase.from("profiles").upsert({
+          id: data.user.id,
+          name,
+          email,
+          role: "Full Stack Developer",
+          bio: "",
+          availability: "available",
+          trust_score: 25,
+          rating: 5.0,
+        });
+      }
+    }
+  };
+
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Error signing out:", error.message);
+    }
+    // Reset React user state
+    setUser(null);
+
+    // Clear all storage caches to isolate user environments
+    localStorage.removeItem("hackos_github_analytics");
+    sessionStorage.removeItem("hackos_wizard_state");
+    sessionStorage.removeItem("oauth_provider");
+    sessionStorage.removeItem("oauth_redirect_path");
+  };
+
+  const updateUser = async (updates: Partial<User>) => {
+    if (!user) return;
+
+    const updated = { ...user, ...updates };
+    setUser(updated);
+
+    try {
+      const dbUpdates: any = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.avatar !== undefined) dbUpdates.avatar_url = updates.avatar;
+      if (updates.role !== undefined) dbUpdates.role = updates.role;
+      if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
+      if (updates.location !== undefined) dbUpdates.location = updates.location;
+      if (updates.college !== undefined) dbUpdates.college = updates.college;
+      if (updates.experience !== undefined) dbUpdates.experience = updates.experience;
+      if (updates.availability !== undefined) dbUpdates.availability = updates.availability;
+      if (updates.trustScore !== undefined) dbUpdates.trust_score = updates.trustScore;
+      if (updates.github !== undefined) dbUpdates.github_url = updates.github;
+      if (updates.linkedin !== undefined) dbUpdates.linkedin_url = updates.linkedin;
+
+      // Map Supabase metadata updates if provided
+      if (updates.github_username !== undefined) dbUpdates.github_username = updates.github_username;
+      if (updates.github_avatar !== undefined) dbUpdates.github_avatar = updates.github_avatar;
+      if (updates.github_connected !== undefined) dbUpdates.github_connected = updates.github_connected;
+      if (updates.github_connected_at !== undefined) dbUpdates.github_connected_at = updates.github_connected_at;
+
+      // Map Supabase LinkedIn updates if provided
+      if (updates.linkedin_url !== undefined) dbUpdates.linkedin_url = updates.linkedin_url;
+      if (updates.linkedin_name !== undefined) dbUpdates.linkedin_name = updates.linkedin_name;
+      if (updates.linkedin_avatar !== undefined) dbUpdates.linkedin_avatar = updates.linkedin_avatar;
+      if (updates.linkedin_connected !== undefined) dbUpdates.linkedin_connected = updates.linkedin_connected;
+      if (updates.linkedin_connected_at !== undefined) dbUpdates.linkedin_connected_at = updates.linkedin_connected_at;
+
+      if (Object.keys(dbUpdates).length > 0) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update(dbUpdates)
+          .eq("id", user.id);
+        
+        if (profileError) throw profileError;
+      }
+
+      if (updates.skills !== undefined) {
+        const { error: deleteError } = await supabase
+          .from("user_skills")
+          .delete()
+          .eq("user_id", user.id);
+
+        if (deleteError) throw deleteError;
+
+        for (const skillName of updates.skills) {
+          let { data: skill } = await supabase
+            .from("skills")
+            .select("id")
+            .eq("name", skillName)
+            .maybeSingle();
+
+          if (!skill) {
+            const { data: newSkill, error: skillInsertError } = await supabase
+              .from("skills")
+              .insert({ name: skillName })
+              .select("id")
+              .single();
+
+            if (skillInsertError) throw skillInsertError;
+            skill = newSkill;
+          }
+
+          if (skill) {
+            const { error: linkError } = await supabase
+              .from("user_skills")
+              .insert({ user_id: user.id, skill_id: skill.id });
+
+            if (linkError) throw linkError;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("Error updating user profile in Supabase:", err);
+      toast.error("Failed to save changes to database.");
+    }
+  };
+
+  const reloadProfile = async () => {
+    if (user) {
+      const loadedUser = await loadUserProfile(user.id, user.email);
+      setUser(loadedUser);
+    }
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, reloadProfile }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
+

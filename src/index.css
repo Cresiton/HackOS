@@ -1,0 +1,524 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Google Font ───────────────────────────────────────────────────────────── */
+
+/* ─── shadcn/ui CSS variables (dark — default) ──────────────────────────────── */
+@layer base {
+  :root {
+    --background: 228 57% 4%;
+    --foreground: 220 20% 95%;
+    --card: 228 40% 10%;
+    --card-foreground: 220 20% 95%;
+    --popover: 228 40% 8%;
+    --popover-foreground: 220 20% 95%;
+    --primary: 258 100% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 228 30% 12%;
+    --secondary-foreground: 220 20% 80%;
+    --muted: 228 30% 14%;
+    --muted-foreground: 220 15% 55%;
+    --accent: 258 100% 68%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 228 30% 16%;
+    --input: 228 30% 14%;
+    --ring: 258 100% 68%;
+    --radius: 0.75rem;
+    --sidebar-background: 228 50% 6%;
+    --sidebar-foreground: 220 20% 90%;
+    --sidebar-primary: 258 100% 68%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 228 30% 12%;
+    --sidebar-accent-foreground: 220 20% 90%;
+    --sidebar-border: 228 30% 12%;
+    --sidebar-ring: 258 100% 68%;
+
+    /* HackOS accent hex (overridable from JS) */
+    --accent-hex: #7C5CFF;
+
+    /* ─── Dark HackOS semantic tokens ─ */
+    --hack-bg:        #06070B;
+    --hack-bg2:       #0E111B;
+    --hack-card:      #131826;
+    --hack-border:    rgba(255,255,255,0.07);
+    --hack-border2:   rgba(255,255,255,0.05);
+    --hack-text:      #E8EAF0;
+    --hack-text-sub:  rgba(255,255,255,0.55);
+    --hack-text-dim:  rgba(255,255,255,0.30);
+    --hack-sidebar:   #0A0D16;
+    --hack-input-bg:  #0E111B;
+    --hack-hover:     rgba(255,255,255,0.05);
+    --hack-section:   rgba(255,255,255,0.02);
+    --hack-divider:   rgba(255,255,255,0.06);
+    --hack-overlay:   rgba(0,0,0,0.7);
+    --hack-shadow:    0 10px 40px rgba(0,0,0,0.35);
+  }
+}
+
+/* ─── Light theme overrides ─────────────────────────────────────────────────── */
+html.theme-light {
+  --background: 220 20% 97%;
+  --foreground: 225 25% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 225 25% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 225 25% 12%;
+  --secondary: 220 14% 93%;
+  --secondary-foreground: 225 25% 25%;
+  --muted: 220 14% 93%;
+  --muted-foreground: 220 12% 50%;
+  --border: 220 14% 88%;
+  --input: 220 14% 93%;
+
+  /* HackOS light semantic tokens */
+  --hack-bg:        #F0F2F8;
+  --hack-bg2:       #E8EBF4;
+  --hack-card:      #FFFFFF;
+  --hack-border:    rgba(0,0,0,0.08);
+  --hack-border2:   rgba(0,0,0,0.05);
+  --hack-text:      #1A1D2E;
+  --hack-text-sub:  rgba(26,29,46,0.65);
+  --hack-text-dim:  rgba(26,29,46,0.40);
+  --hack-sidebar:   #FFFFFF;
+  --hack-input-bg:  #F5F6FA;
+  --hack-hover:     rgba(0,0,0,0.04);
+  --hack-section:   rgba(0,0,0,0.02);
+  --hack-divider:   rgba(0,0,0,0.06);
+  --hack-overlay:   rgba(0,0,0,0.5);
+  --hack-shadow:    0 4px 24px rgba(0,0,0,0.10);
+}
+
+/* ─── Base styles ───────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--hack-bg);
+    color: var(--hack-text);
+    overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* ── Compact mode ── */
+  html.compact .p-6    { padding: 16px !important; }
+  html.compact .p-8    { padding: 20px !important; }
+  html.compact .gap-6  { gap: 12px !important; }
+  html.compact .gap-5  { gap: 10px !important; }
+  html.compact .mb-8   { margin-bottom: 16px !important; }
+  html.compact .mb-6   { margin-bottom: 12px !important; }
+  html.compact .py-5   { padding-top: 12px !important; padding-bottom: 12px !important; }
+  html.compact .space-y-5 > * + * { margin-top: 10px !important; }
+  html.compact .space-y-6 > * + * { margin-top: 12px !important; }
+
+  /* ── Reduce motion ── */
+  html.reduce-motion *,
+  html.reduce-motion *::before,
+  html.reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* ── Scrollbar (dark) ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--hack-bg2); }
+  ::-webkit-scrollbar-thumb { background: rgba(124, 92, 255, 0.4); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(124, 92, 255, 0.7); }
+
+  /* Light scrollbar */
+  html.theme-light ::-webkit-scrollbar-track { background: #E8EBF4; }
+  html.theme-light ::-webkit-scrollbar-thumb { background: rgba(124, 92, 255, 0.25); }
+}
+
+/* ─── Component Layer ───────────────────────────────────────────────────────── */
+@layer components {
+
+  /* ── Cards ── */
+  .hack-card {
+    background: var(--hack-card);
+    border: 1px solid var(--hack-border);
+    border-radius: 24px;
+    box-shadow: var(--hack-shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease;
+  }
+
+  .hack-card:hover {
+    transform: scale(1.01) translateY(-3px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2), 0 0 20px rgba(124, 92, 255, 0.1);
+  }
+
+  html.theme-light .hack-card:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 12px rgba(124, 92, 255, 0.12);
+  }
+
+  /* ── Glass ── */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 24px;
+  }
+
+  html.theme-light .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+  }
+
+  .glass-panel {
+    background: rgba(19, 24, 38, 0.8);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  html.theme-light .glass-panel {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.07);
+  }
+
+  /* ── Buttons ── */
+  .hack-btn-primary {
+    background: var(--accent-hex);
+    color: white;
+    border-radius: 14px;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 10px 20px;
+    transition: all 0.2s ease;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hack-btn-primary:hover {
+    filter: brightness(1.1);
+    transform: scale(1.03);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent-hex) 40%, transparent);
+  }
+
+  .hack-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .hack-btn-secondary {
+    background: var(--hack-hover);
+    color: var(--hack-text-sub);
+    border-radius: 14px;
+    font-weight: 500;
+    font-size: 14px;
+    padding: 10px 20px;
+    transition: all 0.2s ease;
+    border: 1px solid var(--hack-border);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .hack-btn-secondary:hover {
+    background: var(--hack-section);
+    border-color: var(--hack-border2);
+    transform: scale(1.02);
+    color: var(--hack-text);
+  }
+
+  /* ── Inputs ── */
+  .hack-input {
+    background: var(--hack-input-bg);
+    border: 1px solid var(--hack-border);
+    border-radius: 14px;
+    color: var(--hack-text);
+    font-size: 14px;
+    padding: 12px 16px;
+    width: 100%;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease;
+    outline: none;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .hack-input:focus {
+    border-color: color-mix(in srgb, var(--accent-hex) 50%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-hex) 12%, transparent);
+  }
+
+  .hack-input::placeholder {
+    color: var(--hack-text-dim);
+  }
+
+  /* ── Tags / Chips ── */
+  .skill-tag {
+    background: color-mix(in srgb, var(--accent-hex) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-hex) 25%, transparent);
+    color: color-mix(in srgb, var(--accent-hex) 90%, white);
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  html.theme-light .skill-tag {
+    background: color-mix(in srgb, var(--accent-hex) 10%, white);
+    border-color: color-mix(in srgb, var(--accent-hex) 30%, transparent);
+    color: var(--accent-hex);
+  }
+
+  .tag {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--hack-border);
+    color: var(--hack-text-sub);
+    background: var(--hack-section);
+  }
+
+  html.theme-light .tag {
+    border-color: rgba(0,0,0,0.1);
+    color: rgba(26,29,46,0.6);
+    background: rgba(0,0,0,0.03);
+  }
+
+  .online-tag {
+    background: rgba(34, 197, 94, 0.12);
+    border-color: rgba(34, 197, 94, 0.25);
+    color: #22C55E;
+  }
+
+  .offline-tag {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: #F59E0B;
+  }
+
+  .featured-tag {
+    background: color-mix(in srgb, var(--accent-hex) 15%, transparent);
+    border-color: color-mix(in srgb, var(--accent-hex) 30%, transparent);
+    color: color-mix(in srgb, var(--accent-hex) 90%, white);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Navigation ── */
+  .sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    color: var(--hack-text-sub);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    text-decoration: none;
+    position: relative;
+    border: 1px solid transparent;
+  }
+
+  .sidebar-nav-item:hover {
+    background: color-mix(in srgb, var(--accent-hex) 10%, transparent);
+    color: var(--hack-text);
+  }
+
+  .sidebar-nav-item.active {
+    background: color-mix(in srgb, var(--accent-hex) 15%, transparent);
+    color: color-mix(in srgb, var(--accent-hex) 90%, white);
+    border-color: color-mix(in srgb, var(--accent-hex) 20%, transparent);
+  }
+
+  .sidebar-nav-item.active svg {
+    color: var(--accent-hex);
+  }
+
+  html.theme-light .sidebar-nav-item {
+    color: rgba(26,29,46,0.55);
+  }
+
+  html.theme-light .sidebar-nav-item:hover {
+    background: color-mix(in srgb, var(--accent-hex) 8%, transparent);
+    color: rgba(26,29,46,0.9);
+  }
+
+  /* ── Status ── */
+  .status-online {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22C55E;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+    display: inline-block;
+  }
+
+  /* ── Badges ── */
+  .badge-new {
+    background: linear-gradient(135deg, var(--accent-hex), #4F7CFF);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .notification-badge {
+    background: #EF4444;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+  }
+
+  /* ── Progress ── */
+  .progress-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--hack-border);
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent-hex), #4F7CFF);
+    transition: width 0.5s ease;
+  }
+
+  /* ── Stat cards ── */
+  .stat-card {
+    background: var(--hack-card);
+    border: 1px solid var(--hack-border);
+    border-radius: 20px;
+    padding: 20px 24px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+  }
+
+  .stat-card:hover {
+    border-color: color-mix(in srgb, var(--accent-hex) 30%, transparent);
+    transform: translateY(-2px);
+  }
+
+  /* ── Gradient text ── */
+  .gradient-text {
+    background: linear-gradient(135deg, var(--accent-hex), #4F7CFF);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Animations ── */
+  .page-enter {
+    animation: slideIn 0.35s ease-out;
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--hack-section) 25%,
+      var(--hack-hover) 50%,
+      var(--hack-section) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+    border-radius: 8px;
+  }
+
+  .days-left {
+    color: #F59E0B;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .match-score-ring {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hackathon-card-img {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ─── Keyframes ─────────────────────────────────────────────────────────────── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 10px color-mix(in srgb, var(--accent-hex) 30%, transparent); }
+  50%       { box-shadow: 0 0 25px color-mix(in srgb, var(--accent-hex) 60%, transparent); }
+}
+
+/* ─── Light mode overrides for common inline styles ────────────────────────── */
+
+/* Sidebar */
+html.theme-light aside[style] {
+  background: #FFFFFF !important;
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* TopNav */
+html.theme-light header {
+  background: rgba(255,255,255,0.92) !important;
+  border-color: rgba(0,0,0,0.07) !important;
+}
+
+/* Modal backdrops */
+html.theme-light .modal-backdrop {
+  background: rgba(0,0,0,0.4) !important;
+}
+
+/* Input search in topnav */
+html.theme-light input[placeholder="Search hackathons, skills, people, teams..."] {
+  background: rgba(0,0,0,0.04) !important;
+  color: rgba(26,29,46,0.8) !important;
+}
+
+/* Font weight utilities matching the design spec */
+.font-500 { font-weight: 500; }
+.font-600 { font-weight: 600; }
+.font-700 { font-weight: 700; }
