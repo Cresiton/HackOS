@@ -19,6 +19,7 @@ import HackathonDetail from "@/pages/HackathonDetail";
 import NotFound from "@/pages/NotFound";
 import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
 import SettingsPage from "@/pages/SettingsPage";
+import HackOSMatch from "@/pages/HackOSMatch";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/ai-team-builder" element={<AITeamBuilder />} />
             <Route path="/host-hackathon" element={<HostHackathon />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/match" element={<HackOSMatch />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

@@ -162,9 +162,17 @@ export default function DiscoverHackathons() {
   return (
     <div className="p-6 lg:p-8 pb-20">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-white font-700 text-2xl mb-1">Discover Hackathons</h1>
-        <p className="text-white/40 text-sm">Find your next competition from 850+ active hackathons</p>
+      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-white font-700 text-2xl mb-1">Discover Hackathons</h1>
+          <p className="text-white/40 text-sm">Find your next competition from 850+ active hackathons</p>
+        </div>
+        <Link to="/match">
+          <button className="hack-btn-primary py-2.5 px-5" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
+            <Users size={16} />
+            Match with Participants
+          </button>
+        </Link>
       </div>
 
       {/* Search & Filters */}

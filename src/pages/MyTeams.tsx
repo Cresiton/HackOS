@@ -370,13 +370,21 @@ export default function MyTeams() {
           <h1 className="text-white font-700 text-2xl mb-1">My Teams</h1>
           <p className="text-white/40 text-sm">{teams.length} active teams</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="hack-btn-primary"
-        >
-          <Plus size={16} />
-          Create Team
-        </button>
+        <div className="flex gap-3">
+          <Link to="/match">
+            <button className="hack-btn-secondary" style={{ border: "1px solid rgba(124,92,255,0.4)", color: "#A78BFF" }}>
+              <Users size={16} />
+              Recruit Members
+            </button>
+          </Link>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="hack-btn-primary"
+          >
+            <Plus size={16} />
+            Create Team
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
