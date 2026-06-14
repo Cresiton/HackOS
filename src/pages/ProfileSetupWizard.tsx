@@ -2,38 +2,22 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowRight, ArrowLeft, CheckCircle, Github, Linkedin,
-  Upload, Star, Award, Sparkles, User, Code, FileText,
-  Trophy, X, Plus, Loader2, SkipForward, Shield, ExternalLink, Globe
+  Upload, Star, Sparkles, User, FileText, Loader2, SkipForward, Shield, ExternalLink, Globe, Camera
 } from "lucide-react";
 import { buildGitHubAnalytics, GitHubAnalytics } from "@/lib/github";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { useLinkedIn } from "@/hooks/useLinkedIn";
+import { parseResumeFile, mergeResumeDataWithDB } from "@/lib/resumeParserService";
 
 const STEPS = [
-  { id: 1, label: "Basic Info", icon: User, trustGain: 0 },
-  { id: 2, label: "Skills", icon: Code, trustGain: 5 },
-  { id: 3, label: "Resume", icon: FileText, trustGain: 25 },
-  { id: 4, label: "GitHub", icon: Github, trustGain: 25 },
-  { id: 5, label: "LinkedIn", icon: Linkedin, trustGain: 25 },
-  { id: 6, label: "Achievements", icon: Trophy, trustGain: 10 },
-  { id: 7, label: "Review", icon: CheckCircle, trustGain: 10 },
-];
-
-const SKILL_SUGGESTIONS = [
-  "React", "Node.js", "Python", "TypeScript", "Java", "Go", "Rust",
-  "TensorFlow", "PyTorch", "Docker", "Kubernetes", "AWS", "Firebase",
-  "Figma", "Flutter", "Swift", "Kotlin", "Next.js", "Vue.js", "MongoDB",
-  "PostgreSQL", "Redis", "GraphQL", "REST API", "Machine Learning",
-  "UI/UX Design", "Data Science", "Blockchain", "Android", "iOS",
-];
-
-const INTEREST_OPTIONS = [
-  "Backend Development", "Frontend Development", "Full Stack",
-  "AI/ML Engineering", "UI/UX Design", "Mobile Development",
-  "DevOps / Cloud", "Blockchain", "Data Science", "Game Development",
-  "Cybersecurity", "Open Source", "Public Speaking", "Team Leadership",
+  { id: 1, label: "Basic Details", icon: User, trustGain: 0 },
+  { id: 2, label: "Resume Upload", icon: FileText, trustGain: 0 },
+  { id: 3, label: "GitHub Connect", icon: Github, trustGain: 30 },
+  { id: 4, label: "LinkedIn Connect", icon: Linkedin, trustGain: 30 },
+  { id: 5, label: "Profile Photo", icon: Camera, trustGain: 0 },
+  { id: 6, label: "Bio / About", icon: Sparkles, trustGain: 0 },
 ];
 
 function TrustScoreRing({ score, prevScore }: { score: number; prevScore: number }) {
@@ -131,50 +115,13 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 function Step1BasicInfo({ data, onChange }: { data: any; onChange: (d: any) => void }) {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-white/60 text-sm font-500 mb-2">Full Name *</label>
-          <input
-            type="text"
-            value={data.name || ""}
-            onChange={(e) => onChange({ ...data, name: e.target.value })}
-            placeholder="Alex Singh"
-            className="hack-input"
-          />
-        </div>
-        <div>
-          <label className="block text-white/60 text-sm font-500 mb-2">Gender</label>
-          <select
-            value={data.gender || ""}
-            onChange={(e) => onChange({ ...data, gender: e.target.value })}
-            className="hack-input"
-          >
-            <option value="" style={{ background: "#131826" }}>Select gender</option>
-            {["Male", "Female", "Non-binary", "Prefer not to say"].map((g) => (
-              <option key={g} value={g} style={{ background: "#131826" }}>{g}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
       <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">Location</label>
+        <label className="block text-white/60 text-sm font-500 mb-2">Full Name</label>
         <input
           type="text"
-          value={data.location || ""}
-          onChange={(e) => onChange({ ...data, location: e.target.value })}
-          placeholder="City, State, Country"
-          className="hack-input"
-        />
-      </div>
-
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">College / University</label>
-        <input
-          type="text"
-          value={data.college || ""}
-          onChange={(e) => onChange({ ...data, college: e.target.value })}
-          placeholder="IIT Bombay, BITS Pilani..."
+          value={data.name || ""}
+          onChange={(e) => onChange({ ...data, name: e.target.value })}
+          placeholder="Alex Singh"
           className="hack-input"
         />
       </div>
@@ -196,192 +143,69 @@ function Step1BasicInfo({ data, onChange }: { data: any; onChange: (d: any) => v
       </div>
 
       <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">Availability Status</label>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { value: "available", label: "Available for Teams", color: "#22C55E" },
-            { value: "open", label: "Open to Opportunities", color: "#4F7CFF" },
-            { value: "busy", label: "Busy", color: "#F59E0B" },
-            { value: "unavailable", label: "Not Available", color: "#EF4444" },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange({ ...data, availability: opt.value })}
-              className="flex items-center gap-2 p-3 rounded-xl text-sm font-500 transition-all text-left"
-              style={{
-                background: data.availability === opt.value ? `${opt.color}15` : "rgba(255,255,255,0.03)",
-                border: `1px solid ${data.availability === opt.value ? `${opt.color}40` : "rgba(255,255,255,0.07)"}`,
-                color: data.availability === opt.value ? opt.color : "rgba(255,255,255,0.5)",
-              }}
-            >
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: opt.color }} />
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">About You</label>
-        <textarea
-          value={data.bio || ""}
-          onChange={(e) => onChange({ ...data, bio: e.target.value })}
-          placeholder="Tell others about yourself, what you build, and what drives you..."
-          className="hack-input resize-none"
-          rows={3}
-          maxLength={300}
+        <label className="block text-white/60 text-sm font-500 mb-2">Location</label>
+        <input
+          type="text"
+          value={data.location || ""}
+          onChange={(e) => onChange({ ...data, location: e.target.value })}
+          placeholder="City, State, Country"
+          className="hack-input"
         />
-        <div className="text-right text-xs text-white/30 mt-1">{(data.bio || "").length}/300</div>
       </div>
     </div>
   );
 }
 
-function Step2Skills({ data, onChange }: { data: any; onChange: (d: any) => void }) {
-  const [input, setInput] = useState("");
-  const skills: string[] = data.skills || [];
-  const interests: string[] = data.interests || [];
-
-  const addSkill = (skill: string) => {
-    const trimmed = skill.trim();
-    if (trimmed && !skills.includes(trimmed) && skills.length < 20) {
-      onChange({ ...data, skills: [...skills, trimmed] });
-    }
-    setInput("");
-  };
-
-  const removeSkill = (skill: string) => {
-    onChange({ ...data, skills: skills.filter((s) => s !== skill) });
-  };
-
-  const toggleInterest = (interest: string) => {
-    if (interests.includes(interest)) {
-      onChange({ ...data, interests: interests.filter((i) => i !== interest) });
-    } else {
-      onChange({ ...data, interests: [...interests, interest] });
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">
-          Your Skills <span className="text-white/30">({skills.length}/20)</span>
-        </label>
-        <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === ",") {
-                e.preventDefault();
-                addSkill(input);
-              }
-            }}
-            placeholder="Type a skill and press Enter..."
-            className="hack-input flex-1"
-          />
-          <button
-            type="button"
-            onClick={() => addSkill(input)}
-            className="hack-btn-primary px-4"
-            disabled={!input.trim()}
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-
-        {/* Selected skills */}
-        {skills.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4 p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-            {skills.map((skill) => (
-              <span
-                key={skill}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm"
-                style={{ background: "rgba(124,92,255,0.15)", border: "1px solid rgba(124,92,255,0.3)", color: "#A78BFF" }}
-              >
-                {skill}
-                <button type="button" onClick={() => removeSkill(skill)} className="hover:text-white/60 transition-colors">
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Suggestions */}
-        <div>
-          <div className="text-white/30 text-xs mb-2">Quick add popular skills:</div>
-          <div className="flex flex-wrap gap-1.5">
-            {SKILL_SUGGESTIONS.filter((s) => !skills.includes(s)).slice(0, 16).map((skill) => (
-              <button
-                key={skill}
-                type="button"
-                onClick={() => addSkill(skill)}
-                className="tag hover:border-hack-primary/40 hover:text-white/80 transition-all cursor-pointer text-xs"
-              >
-                + {skill}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2">Interests & Roles</label>
-        <div className="grid grid-cols-2 gap-2">
-          {INTEREST_OPTIONS.map((interest) => (
-            <button
-              key={interest}
-              type="button"
-              onClick={() => toggleInterest(interest)}
-              className="flex items-center gap-2 p-2.5 rounded-xl text-xs font-500 transition-all text-left"
-              style={{
-                background: interests.includes(interest) ? "rgba(124,92,255,0.15)" : "rgba(255,255,255,0.03)",
-                border: `1px solid ${interests.includes(interest) ? "rgba(124,92,255,0.35)" : "rgba(255,255,255,0.07)"}`,
-                color: interests.includes(interest) ? "#A78BFF" : "rgba(255,255,255,0.5)",
-              }}
-            >
-              {interests.includes(interest) && <CheckCircle size={12} />}
-              {interest}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Step3Resume({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+function Step2Resume({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+  const { user, reloadProfile } = useAuth();
   const [dragging, setDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
       toast.error("File too large. Max 10MB.");
       return;
     }
-    const allowed = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"];
-    if (!allowed.includes(file.type)) {
-      toast.error("Unsupported format. Upload PDF, DOC, DOCX or TXT.");
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (!extension || !["pdf", "doc", "docx"].includes(extension)) {
+      toast.error("Unsupported format. Please upload a PDF, DOC, or DOCX file.");
       return;
     }
     setParsing(true);
-    onChange({ ...data, resumeFile: file, resumeName: file.name });
-    setTimeout(() => {
+    try {
+      const parsedData = await parseResumeFile(file);
+      if (user?.id) {
+        const summary = await mergeResumeDataWithDB(user.id, parsedData, file);
+        await reloadProfile();
+
+        onChange((prev: any) => {
+          const mergedSkills = [...new Set([...(prev.skills || []), ...(parsedData.skills || []), ...(parsedData.tech_stack || [])])];
+          return {
+            ...prev,
+            resumeFile: file,
+            resumeName: file.name,
+            resumeParsed: true,
+            bio: parsedData.bio || prev.bio || "",
+            skills: mergedSkills,
+          };
+        });
+
+        toast.success(
+          `✓ Resume parsed and merged!\n` +
+          `• Skills: ${summary.skillsAdded} added\n` +
+          `• Projects: ${summary.projectsAdded} added\n` +
+          `• Experience: ${summary.experiencesAdded} added`,
+          { duration: 5000 }
+        );
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to parse resume.");
+      onChange((prev: any) => ({ ...prev, resumeFile: null, resumeName: null, resumeParsed: false }));
+    } finally {
       setParsing(false);
-      onChange((prev: any) => ({
-        ...prev,
-        resumeFile: file,
-        resumeName: file.name,
-        resumeParsed: true,
-        skills: [...new Set([...(prev.skills || []), "React", "Node.js", "TypeScript"])],
-      }));
-      toast.success("Resume parsed! Skills and experience extracted.");
-    }, 2000);
+    }
   };
 
   return (
@@ -401,7 +225,7 @@ function Step3Resume({ data, onChange }: { data: any; onChange: (d: any) => void
           ref={fileRef}
           type="file"
           className="hidden"
-          accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
+          accept=".pdf,.doc,.docx"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
         {parsing ? (
@@ -440,27 +264,10 @@ function Step3Resume({ data, onChange }: { data: any; onChange: (d: any) => void
             </div>
             <div className="text-white font-600">Drag & drop your resume</div>
             <div className="text-white/40 text-sm">or click to browse</div>
-            <div className="text-white/25 text-xs">PDF, DOC, DOCX, TXT — Max 10MB</div>
+            <div className="text-white/25 text-xs">PDF, DOC, DOCX — Max 10MB</div>
           </div>
         )}
       </div>
-
-      {data.resumeParsed && (
-        <div
-          className="p-4 rounded-2xl space-y-3"
-          style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)" }}
-        >
-          <div className="flex items-center gap-2 text-hack-green text-sm font-600">
-            <Sparkles size={14} />
-            AI Extracted from Resume
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {["React", "Node.js", "TypeScript", "3 years experience", "B.Tech CS"].map((item) => (
-              <span key={item} className="skill-tag text-xs">{item}</span>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="text-white/30 text-xs text-center">
         Your resume is used only for profile enhancement. It remains private and deletable anytime.
@@ -469,7 +276,7 @@ function Step3Resume({ data, onChange }: { data: any; onChange: (d: any) => void
   );
 }
 
-function Step4GitHub({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+function Step3GitHub({ data, onChange, onDisconnectClick }: { data: any; onChange: (d: any) => void; onDisconnectClick: () => void }) {
   const [connecting, setConnecting] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const [manualUsername, setManualUsername] = useState("");
@@ -480,7 +287,7 @@ function Step4GitHub({ data, onChange }: { data: any; onChange: (d: any) => void
     setConnecting(true);
     try {
       sessionStorage.setItem("oauth_provider", "github");
-      sessionStorage.setItem("oauth_redirect_path", "/profile-setup");
+      sessionStorage.setItem("oauth_redirect_path", window.location.pathname);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
@@ -545,75 +352,82 @@ function Step4GitHub({ data, onChange }: { data: any; onChange: (d: any) => void
         </div>
       </div>
 
-      {data.githubConnected && analytics ? (
-        <div className="space-y-4">
-          <div
-            className="p-4 rounded-2xl"
-            style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-hack-green font-600">
-                <CheckCircle size={16} />
-                Connected as @{analytics.username}
-              </div>
-              <a
-                href={analytics.profile.html_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white/30 hover:text-white/60 transition-colors"
-              >
-                <ExternalLink size={13} />
-              </a>
-            </div>
-
-            {/* Profile summary */}
-            <div className="flex items-center gap-3 mb-3">
-              <img src={analytics.profile.avatar_url} alt="" className="w-8 h-8 rounded-full" />
-              <div>
-                <div className="text-white text-sm font-600">{analytics.profile.name || analytics.username}</div>
-                {analytics.profile.location && (
-                  <div className="text-white/40 text-xs flex items-center gap-1">
-                    <Globe size={9} /> {analytics.profile.location}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              {[
-                { label: "Repos", value: analytics.profile.public_repos },
-                { label: "Stars", value: analytics.totalStars },
-                { label: "Followers", value: analytics.profile.followers },
-              ].map((s) => (
-                <div key={s.label} className="text-center p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <div className="text-white font-700 text-xl">{s.value}</div>
-                  <div className="text-white/40 text-xs">{s.label}</div>
+      {data.githubConnected ? (
+        analytics ? (
+          <div className="space-y-4">
+            <div
+              className="p-4 rounded-2xl"
+              style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-hack-green font-600">
+                  <CheckCircle size={16} />
+                  Connected as @{analytics.username}
                 </div>
-              ))}
-            </div>
-
-            {/* Top languages */}
-            <div className="flex flex-wrap gap-2">
-              {analytics.topLanguages.slice(0, 5).map((lang) => (
-                <span
-                  key={lang.name}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-500"
-                  style={{ background: `${lang.color}15`, border: `1px solid ${lang.color}30`, color: lang.color }}
+                <a
+                  href={analytics.profile.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white/30 hover:text-white/60 transition-colors"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: lang.color }} />
-                  {lang.name} · {lang.percentage}%
-                </span>
-              ))}
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+
+              {/* Profile summary */}
+              <div className="flex items-center gap-3 mb-3">
+                <img src={analytics.profile.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                <div>
+                  <div className="text-white text-sm font-600">{analytics.profile.name || analytics.username}</div>
+                  {analytics.profile.location && (
+                    <div className="text-white/40 text-xs flex items-center gap-1">
+                      <Globe size={9} /> {analytics.profile.location}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                {[
+                  { label: "Repos", value: analytics.profile.public_repos },
+                  { label: "Stars", value: analytics.totalStars },
+                  { label: "Followers", value: analytics.profile.followers },
+                ].map((s) => (
+                  <div key={s.label} className="text-center p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+                    <div className="text-white font-700 text-xl">{s.value}</div>
+                    <div className="text-white/40 text-xs">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top languages */}
+              <div className="flex flex-wrap gap-2">
+                {analytics.topLanguages.slice(0, 5).map((lang) => (
+                  <span
+                    key={lang.name}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-500"
+                    style={{ background: `${lang.color}15`, border: `1px solid ${lang.color}30`, color: lang.color }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: lang.color }} />
+                    {lang.name} · {lang.percentage}%
+                  </span>
+                ))}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onDisconnectClick}
+              className="hack-btn-secondary w-full justify-center"
+            >
+              Disconnect GitHub
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onChange({ ...data, githubConnected: false, githubUsername: null, githubAnalytics: null })}
-            className="hack-btn-secondary w-full justify-center"
-          >
-            Disconnect GitHub
-          </button>
-        </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center p-8 gap-3 bg-white/5 border border-white/10 rounded-2xl">
+            <Loader2 className="text-hack-primary animate-spin" size={24} />
+            <span className="text-white/60 text-sm">Loading GitHub stats...</span>
+          </div>
+        )
       ) : showManual ? (
         <div className="space-y-3">
           <div>
@@ -697,12 +511,32 @@ function Step4GitHub({ data, onChange }: { data: any; onChange: (d: any) => void
   );
 }
 
-function Step5LinkedIn() {
+function Step4LinkedIn({ data, onChange, onDisconnectClick }: { data: any; onChange: (d: any) => void; onDisconnectClick: () => void }) {
   const { user } = useAuth();
   const { signIn: connectLinkedIn, loading: linkingLinkedIn } = useLinkedIn();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleUrlChange = (val: string) => {
+    onChange({ ...data, linkedinUrl: val });
+    const trimmed = val.trim();
+    if (trimmed && !trimmed.startsWith("https://www.linkedin.com/in/")) {
+      setError("Please enter a valid LinkedIn public profile URL");
+    } else {
+      setError(null);
+    }
+  };
+
+  useEffect(() => {
+    const trimmed = (data.linkedinUrl || "").trim();
+    if (trimmed && !trimmed.startsWith("https://www.linkedin.com/in/")) {
+      setError("Please enter a valid LinkedIn public profile URL");
+    } else {
+      setError(null);
+    }
+  }, [data.linkedinUrl]);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div
         className="p-5 rounded-2xl"
         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}
@@ -728,9 +562,18 @@ function Step5LinkedIn() {
           className="p-5 rounded-2xl"
           style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)" }}
         >
-          <div className="flex items-center gap-2 text-hack-green font-600 mb-3">
-            <CheckCircle size={16} />
-            ✓ Connected
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-hack-green font-600">
+              <CheckCircle size={16} />
+              ✓ Connected
+            </div>
+            <button
+              type="button"
+              onClick={onDisconnectClick}
+              className="text-[9px] font-600 px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all"
+            >
+              Disconnect
+            </button>
           </div>
           <div className="flex items-center gap-4">
             {user.linkedin_avatar && (
@@ -742,16 +585,23 @@ function Step5LinkedIn() {
             )}
             <div>
               <div className="text-white font-700 text-base">{user.linkedin_name || "Connected Builder"}</div>
-              {user.linkedin_url && (
+              {user.linkedin_url && user.linkedin_url.trim().startsWith("https://www.linkedin.com/in/") ? (
                 <a
-                  href={user.linkedin_url}
+                  href={user.linkedin_url.trim()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#A78BFF] text-xs hover:underline flex items-center gap-1 mt-1"
+                  className="text-[#A78BFF] text-xs hover:underline flex items-center gap-1 mt-1 cursor-pointer"
                 >
-                  View Profile
+                  View LinkedIn Profile
                   <ExternalLink size={10} />
                 </a>
+              ) : (
+                <button
+                  disabled
+                  className="text-white/30 text-xs flex items-center gap-1 mt-1 cursor-not-allowed bg-transparent border-none p-0"
+                >
+                  Public LinkedIn URL unavailable
+                </button>
               )}
             </div>
           </div>
@@ -763,7 +613,7 @@ function Step5LinkedIn() {
             disabled={linkingLinkedIn}
             onClick={async () => {
               try {
-                await connectLinkedIn("/profile-setup");
+                await connectLinkedIn(window.location.pathname);
               } catch (err: any) {
                 toast.error(err.message || "Unable to connect LinkedIn");
               }
@@ -778,182 +628,250 @@ function Step5LinkedIn() {
           </button>
         </div>
       )}
+
+      {/* Manual URL input field */}
+      <div className="space-y-2 pt-4 border-t border-white/[0.06]">
+        <label className="block text-white/60 text-sm font-500">LinkedIn Public Profile URL</label>
+        <input
+          type="text"
+          value={data.linkedinUrl || ""}
+          onChange={(e) => handleUrlChange(e.target.value)}
+          placeholder="https://www.linkedin.com/in/your-profile-slug/"
+          className="hack-input"
+        />
+        {error && (
+          <p className="text-hack-red text-[11px] mt-1">{error}</p>
+        )}
+        <p className="text-white/30 text-xs leading-normal">
+          Paste your public LinkedIn profile URL. Example: https://www.linkedin.com/in/john-doe-123456/
+        </p>
+      </div>
     </div>
   );
 }
 
-function Step6Achievements({ data, onChange }: { data: any; onChange: (d: any) => void }) {
-  const hackathons: string[] = data.hackathonsWon || [];
-  const certs: string[] = data.certificates || [];
-  const [hackInput, setHackInput] = useState("");
-  const [certInput, setCertInput] = useState("");
+function Step5PhotoUpload({ onChange }: { onChange: (d: any) => void }) {
+  const { user, updateUser, reloadProfile } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const addItem = (list: string[], value: string, key: string) => {
-    if (value.trim() && !list.includes(value.trim())) {
-      onChange({ ...data, [key]: [...list, value.trim()] });
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate type
+    const validTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Invalid file format. Please upload JPG, PNG, JPEG or WEBP.");
+      return;
+    }
+
+    // Validate size (5 MB limit)
+    const MAX_SIZE = 5 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      toast.error("File size exceeds 5 MB limit.");
+      return;
+    }
+
+    if (!user?.id) return;
+    setUploading(true);
+    const toastId = toast.loading("Uploading photo...");
+
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const storagePath = `${user.id}/profile.${ext}`;
+
+      // Delete old photos
+      const extensions = ["jpg", "jpeg", "png", "webp"];
+      const filesToDelete = extensions.flatMap(extension => [
+        `${user.id}/profile.${extension}`,
+        `${user.id}/avatar.${extension}`
+      ]);
+      await supabase.storage.from("avatars").remove(filesToDelete);
+
+      // Upload new photo
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(storagePath, file, {
+          upsert: true,
+          contentType: file.type
+        });
+
+      if (uploadErr) throw uploadErr;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(storagePath);
+
+      const avatarUrl = urlData.publicUrl;
+
+      // Save to profile
+      await updateUser({ avatar: avatarUrl });
+      await reloadProfile();
+
+      onChange((prev: any) => ({ ...prev, avatarUrl }));
+      toast.success("Photo uploaded successfully.", { id: toastId });
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Upload failed: ${err.message || err}`, { id: toastId });
+    } finally {
+      setUploading(false);
+      if (e.target) e.target.value = "";
     }
   };
 
-  const removeItem = (list: string[], value: string, key: string) => {
-    onChange({ ...data, [key]: list.filter((i) => i !== value) });
+  const handleRemovePhoto = async () => {
+    if (!user?.id) return;
+    if (window.confirm("Are you sure you want to remove your profile picture?")) {
+      setUploading(true);
+      const toastId = toast.loading("Removing photo...");
+      try {
+        const extensions = ["jpg", "jpeg", "png", "webp"];
+        const filesToDelete = extensions.flatMap(extension => [
+          `${user.id}/profile.${extension}`,
+          `${user.id}/avatar.${extension}`
+        ]);
+        await supabase.storage.from("avatars").remove(filesToDelete);
+
+        await updateUser({ avatar: null as any });
+        await reloadProfile();
+
+        onChange((prev: any) => ({ ...prev, avatarUrl: null }));
+        toast.success("Photo removed successfully.", { id: toastId });
+      } catch (err: any) {
+        console.error(err);
+        toast.error(`Remove failed: ${err.message || err}`, { id: toastId });
+      } finally {
+        setUploading(false);
+      }
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2 flex items-center gap-2">
-          <Trophy size={14} className="text-hack-orange" />
-          Hackathons Won / Participated
-        </label>
-        <div className="flex gap-2 mb-3">
-          <input
-            value={hackInput}
-            onChange={(e) => setHackInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(hackathons, hackInput, "hackathonsWon"); setHackInput(""); } }}
-            placeholder="e.g. Smart India Hackathon 2024 – Winner"
-            className="hack-input flex-1 text-sm"
-          />
-          <button type="button" onClick={() => { addItem(hackathons, hackInput, "hackathonsWon"); setHackInput(""); }} className="hack-btn-primary px-3">
-            <Plus size={14} />
-          </button>
-        </div>
-        <div className="space-y-2">
-          {hackathons.map((h) => (
-            <div key={h} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.15)" }}>
-              <div className="flex items-center gap-2">
-                <Trophy size={12} className="text-hack-orange" />
-                <span className="text-white/80 text-sm">{h}</span>
-              </div>
-              <button type="button" onClick={() => removeItem(hackathons, h, "hackathonsWon")} className="text-white/30 hover:text-hack-red">
-                <X size={12} />
-              </button>
+    <div className="space-y-6 flex flex-col items-center">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/jpeg,image/png,image/jpg,image/webp"
+        className="hidden"
+      />
+
+      <div className="relative group">
+        <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-hack-primary bg-[#0E111B] flex items-center justify-center relative">
+          {user?.avatar ? (
+            <img src={user.avatar} alt="Profile preview" className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-white/20 flex flex-col items-center gap-1">
+              <Camera size={32} />
+              <span className="text-[10px]">No Photo</span>
             </div>
-          ))}
-          {hackathons.length === 0 && (
-            <div className="text-white/25 text-xs text-center py-3">Add your hackathon achievements here</div>
           )}
         </div>
+        {uploading && (
+          <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center">
+            <Loader2 className="text-hack-primary animate-spin" size={24} />
+          </div>
+        )}
       </div>
 
-      <div>
-        <label className="block text-white/60 text-sm font-500 mb-2 flex items-center gap-2">
-          <Award size={14} className="text-hack-primary" />
-          Certificates & Awards
-        </label>
-        <div className="flex gap-2 mb-3">
-          <input
-            value={certInput}
-            onChange={(e) => setCertInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(certs, certInput, "certificates"); setCertInput(""); } }}
-            placeholder="e.g. AWS Certified Solutions Architect"
-            className="hack-input flex-1 text-sm"
-          />
-          <button type="button" onClick={() => { addItem(certs, certInput, "certificates"); setCertInput(""); }} className="hack-btn-primary px-3">
-            <Plus size={14} />
+      <div className="text-center space-y-2">
+        <h3 className="text-white font-600 text-sm">Upload Profile Picture</h3>
+        <p className="text-white/40 text-xs max-w-xs mx-auto">
+          Add a friendly profile photo. JPG, PNG, WEBP — Max 5MB.
+        </p>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+          className="hack-btn-primary py-2 px-4 text-xs"
+        >
+          {user?.avatar ? "Change Photo" : "Select Photo"}
+        </button>
+        {user?.avatar && (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={handleRemovePhoto}
+            className="hack-btn-secondary border border-hack-red/30 hover:bg-hack-red/10 text-hack-red py-2 px-4 text-xs"
+          >
+            Remove Photo
           </button>
-        </div>
-        <div className="space-y-2">
-          {certs.map((c) => (
-            <div key={c} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "rgba(124,92,255,0.07)", border: "1px solid rgba(124,92,255,0.15)" }}>
-              <div className="flex items-center gap-2">
-                <Award size={12} className="text-hack-primary" />
-                <span className="text-white/80 text-sm">{c}</span>
-              </div>
-              <button type="button" onClick={() => removeItem(certs, c, "certificates")} className="text-white/30 hover:text-hack-red">
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-          {certs.length === 0 && (
-            <div className="text-white/25 text-xs text-center py-3">Add your certifications and awards here</div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Step7Review({ data, trustScore }: { data: any; trustScore: number }) {
+function Step6Bio({ data, onChange }: { data: any; onChange: (d: any) => void }) {
   const { user } = useAuth();
-  const completionItems = [
-    { label: "Basic Info", done: !!(data.name && data.role), icon: User },
-    { label: "Skills Added", done: (data.skills || []).length > 0, icon: Code },
-    { label: "Resume Uploaded", done: !!data.resumeFile, icon: FileText },
-    { label: "GitHub Connected", done: !!data.githubConnected, icon: Github },
-    { label: "LinkedIn Connected", done: !!user?.linkedin_connected, icon: Linkedin },
-    { label: "Achievements Added", done: (data.hackathonsWon || []).length > 0, icon: Trophy },
-  ];
+  const [generating, setGenerating] = useState(false);
 
-  const completedCount = completionItems.filter((i) => i.done).length;
+  const handleGenerateAI = async () => {
+    setGenerating(true);
+    try {
+      const { callGroq } = await import("@/lib/groq");
+
+      const prompt = `You are a professional developer bio writer.
+Generate a short, modern, and engaging developer bio under 250 characters (about 20-30 words) for:
+Name: ${data.name || user?.name || "Developer"}
+Role: ${data.role || user?.role || "Full Stack Developer"}
+Location: ${data.location || user?.location || ""}
+Skills: ${(data.skills || []).join(", ")}
+
+Strict Rules:
+- Return ONLY the plain text bio.
+- Do NOT wrap in quotes, comments, code blocks, or HTML.
+- Must be strictly under 250 characters. Make it highly professional and punchy.`;
+
+      const response = await callGroq([
+        { role: "system", content: "You are a professional profile copywriter." },
+        { role: "user", content: prompt }
+      ]);
+
+      const cleanBio = response.trim().replace(/^["']|["']$/g, "").slice(0, 250);
+      onChange({ ...data, bio: cleanBio });
+      toast.success("AI Bio generated! Review below.");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to generate bio with AI.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Summary card */}
-      <div
-        className="p-5 rounded-2xl text-center"
-        style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.1), rgba(79,124,255,0.05))", border: "1px solid rgba(124,92,255,0.15)" }}
-      >
-        <div className="text-white font-700 text-lg mb-1">Profile Summary</div>
-        <div className="text-white/40 text-sm mb-4">{completedCount} of {completionItems.length} sections completed</div>
-        <div className="flex justify-center">
-          <TrustScoreRing score={trustScore} prevScore={25} />
-        </div>
-      </div>
-
-      {/* Checklist */}
-      <div className="space-y-2">
-        {completionItems.map((item) => (
-          <div
-            key={item.label}
-            className="flex items-center gap-3 p-3 rounded-xl transition-all"
-            style={{
-              background: item.done ? "rgba(34,197,94,0.06)" : "rgba(255,255,255,0.02)",
-              border: `1px solid ${item.done ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)"}`,
-            }}
+    <div className="space-y-4">
+      <div>
+        <div className="flex justify-between items-center mb-2">
+          <label className="block text-white/60 text-sm font-500">Short Bio / About Me</label>
+          <button
+            type="button"
+            disabled={generating}
+            onClick={handleGenerateAI}
+            className="text-xs text-hack-primary hover:text-hack-primary/80 flex items-center gap-1.5 bg-hack-primary/10 px-2.5 py-1 rounded-lg border border-hack-primary/20 transition-all font-600"
           >
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: item.done ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)" }}
-            >
-              <item.icon size={14} style={{ color: item.done ? "#22C55E" : "rgba(255,255,255,0.3)" }} />
-            </div>
-            <span className="text-sm flex-1" style={{ color: item.done ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.35)" }}>
-              {item.label}
-            </span>
-            {item.done ? (
-              <CheckCircle size={14} className="text-hack-green" />
+            {generating ? (
+              <><Loader2 size={12} className="animate-spin" /> Generating...</>
             ) : (
-              <span className="text-white/25 text-xs">Skipped</span>
+              <><Sparkles size={12} /> Generate with AI</>
             )}
-          </div>
-        ))}
-      </div>
-
-      {data.name && (
-        <div
-          className="p-4 rounded-2xl"
-          style={{ background: "rgba(124,92,255,0.06)", border: "1px solid rgba(124,92,255,0.12)" }}
-        >
-          <div className="text-white/50 text-xs mb-2">Profile Preview</div>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center font-700 text-white"
-              style={{ background: "linear-gradient(135deg, #7C5CFF, #4F7CFF)" }}
-            >
-              {data.name.charAt(0)}
-            </div>
-            <div>
-              <div className="text-white font-600 text-sm">{data.name}</div>
-              <div className="text-white/50 text-xs">{data.role || "Builder"} • {data.location || "Location not set"}</div>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {(data.skills || []).slice(0, 4).map((s: string) => (
-                  <span key={s} className="skill-tag" style={{ fontSize: "10px", padding: "1px 7px" }}>{s}</span>
-                ))}
-              </div>
-            </div>
-          </div>
+          </button>
         </div>
-      )}
+        <textarea
+          value={data.bio || ""}
+          onChange={(e) => onChange({ ...data, bio: e.target.value.slice(0, 250) })}
+          placeholder="Write a short summary about yourself, what you are building, or your background..."
+          className="hack-input resize-none"
+          rows={5}
+          maxLength={250}
+        />
+        <div className="text-right text-xs text-white/30 mt-1">{(data.bio || "").length}/250</div>
+      </div>
     </div>
   );
 }
@@ -961,7 +879,8 @@ function Step7Review({ data, trustScore }: { data: any; trustScore: number }) {
 // ───────── Main Wizard ─────────
 
 export default function ProfileSetupWizard() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, disconnectGithub, disconnectLinkedIn } = useAuth();
+  const [confirmDisconnectProvider, setConfirmDisconnectProvider] = useState<"github" | "linkedin" | null>(null);
   const navigate = useNavigate();
 
   // Load initial state from sessionStorage if present to survive OAuth redirect reload
@@ -1013,8 +932,10 @@ export default function ProfileSetupWizard() {
       githubTopLangs: [] as string[],
       githubAnalytics: null as any,
       linkedinConnected: false,
+      linkedinUrl: user?.linkedin_url || "",
       hackathonsWon: [],
       certificates: [],
+      avatarUrl: user?.avatar || null,
     };
     if (saved) {
       try {
@@ -1049,20 +970,63 @@ export default function ProfileSetupWizard() {
     sessionStorage.setItem("hackos_wizard_state", JSON.stringify(stateToSave));
   }, [currentStep, skippedSteps, formData]);
 
-  // Keep GitHub connection state synced with profiles table directly (source of truth)
+  // Keep user profile details synced with profiles table directly (source of truth)
   useEffect(() => {
     if (user) {
       setFormData((prev) => {
-        const isConnected = !!user.github_connected;
-        const username = user.github_username || null;
-        if (prev.githubConnected !== isConnected || prev.githubUsername !== username) {
-          return {
-            ...prev,
-            githubConnected: isConnected,
-            githubUsername: username,
-          };
+        let updated = false;
+        const newFormData = { ...prev };
+
+        if (user.name && (!prev.name || prev.name.trim() === "")) {
+          newFormData.name = user.name;
+          updated = true;
         }
-        return prev;
+        if (user.role && (!prev.role || prev.role.trim() === "")) {
+          newFormData.role = user.role;
+          updated = true;
+        }
+        if (user.location && (!prev.location || prev.location.trim() === "")) {
+          newFormData.location = user.location;
+          updated = true;
+        }
+        if (user.bio && (!prev.bio || prev.bio.trim() === "")) {
+          newFormData.bio = user.bio;
+          updated = true;
+        }
+        if (user.skills && user.skills.length > 0 && (!prev.skills || prev.skills.length === 0)) {
+          newFormData.skills = user.skills;
+          updated = true;
+        }
+        if (user.availability && prev.availability === "available" && user.availability !== "available") {
+          newFormData.availability = user.availability;
+          updated = true;
+        }
+
+        const isGithubConnected = !!user.github_username || !!user.github_connected;
+        const githubUsername = user.github_username || null;
+        if (prev.githubConnected !== isGithubConnected || prev.githubUsername !== githubUsername) {
+          newFormData.githubConnected = isGithubConnected;
+          newFormData.githubUsername = githubUsername;
+          updated = true;
+        }
+
+        const isLinkedinConnected = !!user.linkedin_connected || !!user.linkedin_url || !!user.linkedin_name;
+        const linkedinUrl = user.linkedin_url || "";
+        if (prev.linkedinConnected !== isLinkedinConnected || prev.linkedinUrl !== linkedinUrl) {
+          newFormData.linkedinConnected = isLinkedinConnected;
+          if (!prev.linkedinUrl) {
+            newFormData.linkedinUrl = linkedinUrl;
+          }
+          updated = true;
+        }
+
+        const avatarUrl = user.avatar || null;
+        if (prev.avatarUrl !== avatarUrl) {
+          newFormData.avatarUrl = avatarUrl;
+          updated = true;
+        }
+
+        return updated ? newFormData : prev;
       });
     }
   }, [user]);
@@ -1096,19 +1060,32 @@ export default function ProfileSetupWizard() {
   }, [user, formData.githubAnalytics]);
 
   const calculateTrustScore = (data: typeof formData) => {
-    let score = 25; // base
-    if (data.skills?.length > 0) score += 5;
-    if (data.resumeFile || data.resumeParsed) score += 25; // count if uploaded or parsed
-    if (data.githubConnected) score += 25;
-    if (user?.linkedin_connected) score += 25;
-    if (data.hackathonsWon?.length > 0) score += 10;
+    let score = 0;
+    const isGithubConnected = data.githubConnected || user?.github_connected;
+    const isLinkedinConnected = user?.linkedin_connected || !!(data.linkedinUrl && data.linkedinUrl.trim().startsWith("https://www.linkedin.com/in/"));
+    const hasEducation = !!(user?.education && user.education.length > 0);
+    const hasExperience = !!(user?.experiences && user.experiences.length > 0);
+
+    if (isGithubConnected) score += 30;
+    if (isLinkedinConnected) score += 30;
+    if (hasEducation) score += 15;
+    if (hasExperience) score += 15;
+
     return Math.min(score, 100);
   };
 
   const trustScore = calculateTrustScore(formData);
 
   const handleNext = () => {
-    if (currentStep < 7) setCurrentStep((s) => s + 1);
+    if (currentStep === 4) {
+      const url = formData.linkedinUrl || "";
+      const trimmed = url.trim();
+      if (trimmed && !trimmed.startsWith("https://www.linkedin.com/in/")) {
+        toast.error("Please enter a valid LinkedIn public profile URL");
+        return;
+      }
+    }
+    if (currentStep < 6) setCurrentStep((s) => s + 1);
   };
 
   const handleBack = () => {
@@ -1116,43 +1093,74 @@ export default function ProfileSetupWizard() {
   };
 
   const handleSkip = () => {
+    if (currentStep === 4) {
+      setFormData((prev: any) => ({ ...prev, linkedinUrl: "" }));
+    }
     setSkippedSteps((prev) => [...prev, currentStep]);
-    if (currentStep < 7) setCurrentStep((s) => s + 1);
+    if (currentStep < 6) setCurrentStep((s) => s + 1);
     else handleFinish();
   };
 
-  const handleFinish = () => {
-    updateUser({
-      name: formData.name || user?.name,
-      role: formData.role || user?.role,
-      location: formData.location || user?.location,
-      bio: formData.bio,
-      skills: formData.skills,
-      availability: formData.availability as any,
-      trustScore,
-      github: formData.githubConnected ? `https://github.com/${formData.githubUsername}` : undefined,
-      github_username: formData.githubConnected ? (formData.githubUsername || undefined) : undefined,
-      github_avatar: formData.githubConnected ? (formData.githubAnalytics?.profile.avatar_url || undefined) : undefined,
-      github_connected: formData.githubConnected,
-    });
-    sessionStorage.removeItem("hackos_wizard_state");
-    toast.success("Profile complete! Welcome to HackOS 🚀");
-    navigate("/dashboard");
+  const handleFinish = async () => {
+    const trimmedLinkedin = (formData.linkedinUrl || "").trim();
+    const isLinkedInConnected = !!(user?.linkedin_connected || (trimmedLinkedin && trimmedLinkedin.startsWith("https://www.linkedin.com/in/")));
+
+    try {
+      await updateUser({
+        name: formData.name || user?.name,
+        role: formData.role || user?.role,
+        location: formData.location || user?.location,
+        bio: formData.bio || user?.bio,
+        skills: formData.skills || user?.skills,
+        availability: formData.availability as any,
+        trustScore,
+        github: formData.githubConnected ? `https://github.com/${formData.githubUsername}` : (user?.github || undefined),
+        github_username: formData.githubConnected ? (formData.githubUsername || undefined) : (user?.github_username || undefined),
+        github_avatar: formData.githubConnected ? (formData.githubAnalytics?.profile.avatar_url || undefined) : (user?.github_avatar || undefined),
+        github_connected: formData.githubConnected || user?.github_connected || false,
+        linkedin_url: trimmedLinkedin || user?.linkedin_url || null,
+        linkedin_connected: isLinkedInConnected,
+        linkedin_connected_at: isLinkedInConnected ? (user?.linkedin_connected_at || new Date().toISOString()) : undefined,
+        profile_completed: true,
+      });
+      sessionStorage.removeItem("hackos_wizard_state");
+      toast.success("Profile complete! Welcome to HackOS 🚀");
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to complete profile.");
+    }
+  };
+
+  const handleCompleteLater = async () => {
+    try {
+      await updateUser({
+        name: formData.name || user?.name,
+        role: formData.role || user?.role,
+        location: formData.location || user?.location,
+        bio: formData.bio || user?.bio,
+        profile_completed: true,
+      });
+      sessionStorage.removeItem("hackos_wizard_state");
+      toast.success("Profile setup skipped. You can complete it later in your profile.");
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to complete setup later.");
+    }
   };
 
   const currentStepInfo = STEPS[currentStep - 1];
-  const isLastStep = currentStep === 7;
-  const isSkippable = currentStep !== 1 && currentStep !== 7;
+  const isLastStep = currentStep === 6;
 
   const renderStep = () => {
     switch (currentStep) {
       case 1: return <Step1BasicInfo data={formData} onChange={setFormData} />;
-      case 2: return <Step2Skills data={formData} onChange={setFormData} />;
-      case 3: return <Step3Resume data={formData} onChange={setFormData} />;
-      case 4: return <Step4GitHub data={formData} onChange={setFormData} />;
-      case 5: return <Step5LinkedIn />;
-      case 6: return <Step6Achievements data={formData} onChange={setFormData} />;
-      case 7: return <Step7Review data={formData} trustScore={trustScore} />;
+      case 2: return <Step2Resume data={formData} onChange={setFormData} />;
+      case 3: return <Step3GitHub data={formData} onChange={setFormData} onDisconnectClick={() => setConfirmDisconnectProvider("github")} />;
+      case 4: return <Step4LinkedIn data={formData} onChange={setFormData} onDisconnectClick={() => setConfirmDisconnectProvider("linkedin")} />;
+      case 5: return <Step5PhotoUpload onChange={setFormData} />;
+      case 6: return <Step6Bio data={formData} onChange={setFormData} />;
       default: return null;
     }
   };
@@ -1197,7 +1205,7 @@ export default function ProfileSetupWizard() {
               style={{ background: "rgba(255,255,255,0.08)" }}
             />
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={handleCompleteLater}
               className="text-white/30 hover:text-white/60 text-xs transition-colors flex items-center gap-1"
             >
               <SkipForward size={12} />
@@ -1244,23 +1252,21 @@ export default function ProfileSetupWizard() {
             <h2 className="text-white font-700 text-xl">
               {{
                 1: "Basic Information",
-                2: "Skills & Interests",
-                3: "Upload Resume",
-                4: "Connect GitHub",
-                5: "Import LinkedIn",
-                6: "Achievements",
-                7: "Review & Complete",
+                2: "Upload Resume",
+                3: "Connect GitHub",
+                4: "Import LinkedIn",
+                5: "Upload Photo",
+                6: "Bio & Summary",
               }[currentStep]}
             </h2>
             <p className="text-white/40 text-sm mt-0.5">
               {{
                 1: "Tell others who you are and what you do",
-                2: "Showcase your technical skills and interests",
-                3: "Let AI extract your skills and experience automatically",
-                4: "Import your development activity and top languages",
-                5: "Bring your professional experience into HackOS",
-                6: "Add hackathon wins and certifications",
-                7: "Your profile looks great! Ready to start building.",
+                2: "Let AI extract your skills and experience automatically",
+                3: "Import your development activity and top languages",
+                4: "Bring your professional experience into HackOS",
+                5: "Add a custom profile picture to stand out",
+                6: "Write a short summary about yourself and your goals",
               }[currentStep]}
             </p>
           </div>
@@ -1297,16 +1303,14 @@ export default function ProfileSetupWizard() {
           </button>
 
           <div className="flex items-center gap-3">
-            {isSkippable && (
-              <button
-                type="button"
-                onClick={handleSkip}
-                className="text-white/35 hover:text-white/60 text-sm font-500 transition-colors flex items-center gap-1.5"
-              >
-                <SkipForward size={14} />
-                Skip for now
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="text-white/35 hover:text-white/60 text-sm font-500 transition-colors flex items-center gap-1.5"
+            >
+              <SkipForward size={14} />
+              {isLastStep ? "Skip and Finish" : "Skip for now"}
+            </button>
             {isLastStep ? (
               <button
                 type="button"
@@ -1335,6 +1339,61 @@ export default function ProfileSetupWizard() {
       <p className="text-white/20 text-xs mt-6 text-center">
         All information is editable anytime from your Profile settings.
       </p>
+
+      {confirmDisconnectProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 relative overflow-hidden"
+            style={{
+              background: "#0E111B",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <h3 className="text-white font-700 text-lg mb-2 capitalize">
+              Disconnect {confirmDisconnectProvider}
+            </h3>
+            <p className="text-white/60 text-xs leading-relaxed mb-6">
+              Are you sure you want to disconnect {confirmDisconnectProvider === "github" ? "GitHub" : "LinkedIn"}? This will remove synced data, stats, and badges from your profile.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmDisconnectProvider(null)}
+                className="px-4 py-2 rounded-xl text-xs font-600 bg-white/[0.04] text-white hover:bg-white/[0.08] transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const provider = confirmDisconnectProvider;
+                  setConfirmDisconnectProvider(null);
+                  if (provider === "github") {
+                    await disconnectGithub();
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      githubConnected: false,
+                      githubUsername: null,
+                      githubAnalytics: null,
+                    }));
+                  } else {
+                    await disconnectLinkedIn();
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      linkedinConnected: false,
+                      linkedinUrl: "",
+                    }));
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-600 bg-red-500 text-white hover:bg-red-600 transition-all"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

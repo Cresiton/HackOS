@@ -30,6 +30,8 @@ export interface User {
   experiences?: UserExperience[];
   projects?: UserProject[];
   domains?: string[];
+  resume?: UserResume;
+  profile_completed?: boolean;
 }
 
 export interface Hackathon {
@@ -173,11 +175,9 @@ export interface UserExperience {
 }
 
 export interface UserResume {
-  id?: string;
   user_id?: string;
   file_name: string;
-  file_size: number;
+  file_url: string;
+  file_type: string;
   uploaded_at: string;
-  parsed_at: string;
-  status: string;
 }
