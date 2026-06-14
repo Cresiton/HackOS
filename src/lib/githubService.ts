@@ -23,19 +23,21 @@ async function githubFetch(url: string, token?: string): Promise<any> {
 
   const res = await fetch(url, { headers });
 
-  if (!res.ok) {
-    if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
-      throw new Error("GitHub API rate limit exceeded. Please try again later.");
-    }
-    // Return null or empty values for common endpoints where 404/204 is normal for empty repos
-    if (res.status === 404 || res.status === 204) {
-      return null;
-    }
-    throw new Error(`GitHub API error: ${res.statusText} (${res.status})`);
+  const rateLimitRemaining = res?.headers?.get("x-ratelimit-remaining");
+  if (res?.status === 403 || rateLimitRemaining === "0") {
+    throw new Error("GitHub API rate limit reached. Try again later.");
   }
 
-  if (res.status === 204) return null;
-  return res.json();
+  if (!res?.ok) {
+    // Return null or empty values for common endpoints where 404/204 is normal for empty repos
+    if (res?.status === 404 || res?.status === 204) {
+      return null;
+    }
+    throw new Error(`GitHub API error: ${res?.statusText} (${res?.status})`);
+  }
+
+  if (res?.status === 204) return null;
+  return res?.json();
 }
 
 /**
@@ -47,24 +49,22 @@ async function fetchAllPublicRepos(username: string, token?: string): Promise<an
   const perPage = 100;
 
   while (true) {
-    const url = `https://api.github.com/users/${username}/repos?per_page=${perPage}&page=${page}&type=owner`;
+    const url = `https://api.github.com/users/${username}/repos?page=${page}&per_page=${perPage}`;
     const data = await githubFetch(url, token);
     if (!data || !Array.isArray(data) || data.length === 0) break;
     repos = repos.concat(data);
-    if (data.length < perPage) break;
     page++;
   }
 
   // Filter out forks to only count user's original repositories
-  return repos.filter((repo) => !repo.fork);
+  return repos.filter((repo) => !repo?.fork);
 }
 
 /**
  * Syncs the GitHub statistics of a user to public.github_stats in Supabase.
- * Follows the 8 step aggregation flow.
  */
 export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStats> {
-  // 1. Get username from profiles table or session user_metadata
+  // 1. Get username from profiles table
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
     .select("github_username")
@@ -72,20 +72,33 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
     .maybeSingle();
 
   if (profileErr) {
-    throw new Error(`Failed to load profile for user: ${profileErr.message}`);
+    throw new Error(`Failed to load profile for user: ${profileErr?.message}`);
   }
 
   let username = profile?.github_username;
 
-  // Fallback to active session user_metadata if username not stored in profile yet
+  // 17. Verify github_username is correctly stored in profiles table.
+  // If missing: extract from session metadata and update profiles.github_username.
   if (!username) {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.id === userId) {
-      const metadata = session.user.user_metadata;
-      username = metadata.preferred_username || metadata.user_name;
+      const metadata = session?.user?.user_metadata;
+      username = metadata?.user_name || metadata?.preferred_username || metadata?.login;
+      
+      if (username) {
+        const { error: updateErr } = await supabase
+          .from("profiles")
+          .update({ github_username: username })
+          .eq("id", userId);
+        
+        if (updateErr) {
+          console.error("Failed to update profiles.github_username:", updateErr?.message);
+        }
+      }
     }
   }
 
+  // Do not continue analytics sync if github_username is null.
   if (!username) {
     throw new Error("GitHub username not found. Please connect your GitHub account first.");
   }
@@ -98,7 +111,7 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
   if (!userProfile) {
     throw new Error(`GitHub user profile for "${username}" could not be loaded.`);
   }
-  const publicReposCount = userProfile.public_repos || 0;
+  const publicReposCount = userProfile?.public_repos || 0;
 
   // 4. Fetch all public repositories (ignoring forks)
   const repos = await fetchAllPublicRepos(username, token);
@@ -106,12 +119,14 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
   let totalCommits = 0;
   const activeDaysSet = new Set<string>();
   const languageBytesMap: Record<string, number> = {};
+  let rateLimitErrorOccurred = false;
 
   // Fetch stats for all public repositories in parallel with resilient error bounds
   await Promise.allSettled(
     repos.map(async (repo) => {
-      const owner = repo.owner.login;
-      const repoName = repo.name;
+      const owner = repo?.owner?.login;
+      const repoName = repo?.name;
+      if (!owner || !repoName) return;
 
       // Step A: Aggregate languages
       try {
@@ -124,51 +139,50 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
             }
           });
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.message === "GitHub API rate limit reached. Try again later.") {
+          rateLimitErrorOccurred = true;
+          return;
+        }
         console.warn(`Failed to fetch languages for repo ${repoName}:`, err);
       }
 
-      // Step B: Calculate commits from contributor stats (accurate commit count)
-      try {
-        const url = `https://api.github.com/repos/${owner}/${repoName}/contributors`;
-        const contributors = await githubFetch(url, token);
-        if (contributors && Array.isArray(contributors)) {
-          const userContrib = contributors.find(
-            (c: any) => c.login?.toLowerCase() === username!.toLowerCase()
-          );
-          if (userContrib) {
-            totalCommits += userContrib.contributions || 0;
-          }
-        }
-      } catch (err) {
-        console.warn(`Failed to fetch contributors for repo ${repoName}:`, err);
-      }
-
-      // Step C: Calculate Active Days (unique commit dates)
+      // Step B & C: Fetch commits and calculate commit count & active days
       try {
         let page = 1;
         const perPage = 100;
+        let repoCommitsCount = 0;
         while (true) {
-          const url = `https://api.github.com/repos/${owner}/${repoName}/commits?author=${username}&per_page=${perPage}&page=${page}`;
+          const url = `https://api.github.com/repos/${owner}/${repoName}/commits?author=${username}&page=${page}&per_page=${perPage}`;
           const commits = await githubFetch(url, token);
           if (!commits || !Array.isArray(commits) || commits.length === 0) {
             break;
           }
+          repoCommitsCount += commits.length;
           commits.forEach((c: any) => {
-            const dateStr = c.commit?.author?.date || c.author?.date;
+            const dateStr = c?.commit?.author?.date || c?.author?.date;
             if (dateStr) {
               const dateOnly = dateStr.split("T")[0]; // Extract YYYY-MM-DD
               activeDaysSet.add(dateOnly);
             }
           });
-          if (commits.length < perPage) break;
           page++;
         }
-      } catch (err) {
-        console.warn(`Failed to fetch commits for active days in repo ${repoName}:`, err);
+        totalCommits += repoCommitsCount;
+      } catch (err: any) {
+        if (err?.message === "GitHub API rate limit reached. Try again later.") {
+          rateLimitErrorOccurred = true;
+          return;
+        }
+        console.warn(`Failed to fetch commits for repo ${repoName}:`, err);
       }
     })
   );
+
+  // If a rate limit error occurred, throw it and abort saving to DB to preserve original stats.
+  if (rateLimitErrorOccurred) {
+    throw new Error("GitHub API rate limit reached. Try again later.");
+  }
 
   // Convert raw language bytes to percentages
   const totalBytes = Object.values(languageBytesMap).reduce((a, b) => a + b, 0);
@@ -182,10 +196,11 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
     });
   }
 
-  const activeDays = activeDaysSet.size;
+  const activeDays = activeDaysSet?.size || 0;
 
-  // Step D: Calculate score: (commits * 2) + (repos * 5) + active_days
-  const score = (totalCommits * 2) + (publicReposCount * 5) + activeDays;
+  // Step D: Calculate score: (publicRepos * 5) + (commits * 0.5) + (activeDays * 2) capped at 100
+  const rawScore = (publicReposCount * 5) + (totalCommits * 0.5) + (activeDays * 2);
+  const score = Math.min(Math.round(rawScore), 100);
 
   const stats: GitHubStats = {
     user_id: userId,
@@ -204,7 +219,7 @@ export async function syncGitHubStatsForUser(userId: string): Promise<GitHubStat
     .upsert(stats, { onConflict: "user_id" });
 
   if (upsertErr) {
-    throw new Error(`Failed to save GitHub stats in database: ${upsertErr.message}`);
+    throw new Error(`Failed to save GitHub stats in database: ${upsertErr?.message}`);
   }
 
   return stats;
@@ -221,9 +236,40 @@ export async function getGitHubStatsFromDB(userId: string): Promise<GitHubStats 
     .maybeSingle();
 
   if (error) {
-    console.error("Error reading GitHub stats from DB:", error.message);
+    console.error("Error reading GitHub stats from DB:", error?.message);
     return null;
   }
 
   return data;
 }
+
+/**
+ * Disconnects the GitHub integration for a user, clearing all provider-related fields in profiles
+ * and removing rows from github_stats.
+ */
+export async function disconnectGithub(userId: string): Promise<void> {
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      github_username: null,
+      github_url: null,
+      github_avatar: null,
+      github_connected: false,
+      github_connected_at: null,
+    })
+    .eq("id", userId);
+
+  if (profileError) {
+    throw new Error(`Failed to disconnect GitHub in profile: ${profileError.message}`);
+  }
+
+  const { error: statsError } = await supabase
+    .from("github_stats")
+    .delete()
+    .eq("user_id", userId);
+
+  if (statsError) {
+    console.warn(`Failed to delete GitHub stats row: ${statsError.message}`);
+  }
+}
+

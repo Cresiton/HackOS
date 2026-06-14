@@ -33,6 +33,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+
+  const isSetupPath = window.location.pathname === "/profile-setup";
+  if (user?.profile_completed !== true && !isSetupPath) {
+    return <Navigate to="/profile-setup" replace />;
+  }
+  if (user?.profile_completed === true && isSetupPath) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return <>{children}</>;
 }
 

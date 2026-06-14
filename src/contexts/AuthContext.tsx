@@ -11,6 +11,8 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (updates: Partial<User>) => Promise<void>;
   reloadProfile: () => Promise<void>;
+  disconnectGithub: () => Promise<void>;
+  disconnectLinkedIn: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -105,37 +107,130 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (domainError) console.error("Error fetching domains:", domainError);
       const domains = domainData ? domainData.map((d: any) => d.domain) : [];
 
+      const { data: resumeData, error: resumeError } = await supabase
+        .from("user_resume")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (resumeError) console.error("Error fetching resume metadata:", resumeError);
+
+      let needsSelfHealing = false;
+      const selfHealingUpdates: any = {};
+
+      if (profile.github_username && !profile.github_connected) {
+        needsSelfHealing = true;
+        selfHealingUpdates.github_connected = true;
+        if (!profile.github_connected_at) {
+          selfHealingUpdates.github_connected_at = new Date().toISOString();
+        }
+        if (!profile.github_url) {
+          selfHealingUpdates.github_url = `https://github.com/${profile.github_username}`;
+        }
+      }
+
+      if ((profile.linkedin_name || profile.linkedin_url) && !profile.linkedin_connected) {
+        needsSelfHealing = true;
+        selfHealingUpdates.linkedin_connected = true;
+        if (!profile.linkedin_connected_at) {
+          selfHealingUpdates.linkedin_connected_at = new Date().toISOString();
+        }
+      }
+
+      if (needsSelfHealing) {
+        const { error: healError } = await supabase
+          .from("profiles")
+          .update(selfHealingUpdates)
+          .eq("id", userId);
+        
+        if (healError) {
+          console.error("Self-healing connections failed:", healError?.message);
+        } else {
+          profile = { ...profile, ...selfHealingUpdates };
+        }
+      }
+
+      // Calculate completeness-based Trust Score dynamically (profile photo excluded)
+      const isGithubConnected = !!profile?.github_username || !!profile?.github_connected;
+      const isLinkedinConnected = !!profile?.linkedin_url || !!profile?.linkedin_name || !!profile?.linkedin_connected;
+
+      let computedTrustScore = 0;
+      if (isGithubConnected) computedTrustScore += 30;
+      if (isLinkedinConnected) computedTrustScore += 30;
+      if (eduData && eduData.length > 0) computedTrustScore += 15;
+      if (expData && expData.length > 0) computedTrustScore += 15;
+
+      if (profile?.trust_score !== computedTrustScore) {
+        const { error: scoreUpdateError } = await supabase
+          .from("profiles")
+          .update({ trust_score: computedTrustScore })
+          .eq("id", userId);
+        if (scoreUpdateError) {
+          console.error("Failed to update trust score:", scoreUpdateError?.message);
+        } else {
+          profile.trust_score = computedTrustScore;
+        }
+      }
+
+      let profileCompletedValue = profile.profile_completed || false;
+
+      // Self-healing: if user has any profile data or connected github/linkedin but profile_completed = false, auto-set to true
+      const hasProfileData = 
+        profile.github_connected === true ||
+        profile.linkedin_connected === true ||
+        !!(profile.location && profile.location.trim() !== "") ||
+        !!(profile.college && profile.college.trim() !== "") ||
+        !!(profile.experience && profile.experience.trim() !== "") ||
+        !!(profile.bio && profile.bio.trim() !== "" && profile.bio !== "Excited to build together!" && profile.bio !== "Ready to collaborate on hackathons!") ||
+        !!(profile.avatar_url && profile.avatar_url.trim() !== "" && !profile.avatar_url.includes("api.dicebear.com")) ||
+        !!(eduData && eduData.length > 0) ||
+        !!(expData && expData.length > 0) ||
+        !!(projData && projData.length > 0) ||
+        !!resumeData;
+
+      if (hasProfileData && !profile.profile_completed) {
+        const { error: completeError } = await supabase
+          .from("profiles")
+          .update({ profile_completed: true })
+          .eq("id", userId);
+        if (!completeError) {
+          profileCompletedValue = true;
+          profile.profile_completed = true;
+        }
+      }
+
       return {
         id: profile.id,
         name: profile.name,
         email: profile.email,
-        avatar: profile.linkedin_avatar || profile.github_avatar || profile.avatar_url || undefined,
+        avatar: profile.avatar_url || profile.linkedin_avatar || profile.github_avatar || undefined,
         role: profile.role || "Full Stack Developer",
         skills: skills,
         location: profile.location || "",
         bio: profile.bio || "",
         github: profile.github_url || undefined,
         linkedin: profile.linkedin_url || undefined,
-        trustScore: profile.trust_score || 0,
+        trustScore: computedTrustScore,
         availability: profile.availability || "available",
         rating: Number(profile.rating) || 5.0,
         college: profile.college || "",
         experience: profile.experience || "",
         isOnline: true,
-        badges: ["Top Builder"],
+        badges: profile.badges || [],
         github_username: profile.github_username || undefined,
         github_avatar: profile.github_avatar || undefined,
-        github_connected: profile.github_connected || false,
+        github_connected: !!profile.github_username || !!profile.github_connected,
         github_connected_at: profile.github_connected_at || undefined,
         linkedin_url: profile.linkedin_url || undefined,
         linkedin_name: profile.linkedin_name || undefined,
         linkedin_avatar: profile.linkedin_avatar || undefined,
-        linkedin_connected: profile.linkedin_connected || false,
+        linkedin_connected: !!profile.linkedin_url || !!profile.linkedin_name || !!profile.linkedin_connected,
         linkedin_connected_at: profile.linkedin_connected_at || undefined,
         education: eduData || [],
         experiences: expData || [],
         projects: projData || [],
         domains: domains,
+        resume: resumeData || undefined,
+        profile_completed: profileCompletedValue,
       };
     } catch (err) {
       console.error("Exception in loadUserProfile:", err);
@@ -144,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+
     // 1. Check if the URL contains OAuth cancellation errors
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
@@ -200,7 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Sync GitHub details
           if (oauthProvider === "github") {
             const metadata = session.user.user_metadata;
-            const username = metadata.preferred_username || metadata.user_name || "";
+            const username = metadata.preferred_username || metadata.user_name || metadata.login || "";
             const avatar = metadata.avatar_url || "";
             const githubUrl = `https://github.com/${username}`;
 
@@ -239,8 +335,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const metadata = session.user.user_metadata;
             const name = metadata.full_name || metadata.name || "";
             const avatar = metadata.avatar_url || metadata.picture || null;
-            const username = metadata.preferred_username || "";
-            const linkedinUrl = username ? `https://www.linkedin.com/in/${username}` : null;
 
             // Check if user was already marked connected in the database
             const { data: currentProfile } = await supabase
@@ -256,7 +350,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .update({
                 linkedin_name: name,
                 linkedin_avatar: avatar,
-                linkedin_url: linkedinUrl,
                 linkedin_connected: true,
                 linkedin_connected_at: new Date().toISOString(),
               })
@@ -354,9 +447,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
 
-    const updated = { ...user, ...updates };
-    setUser(updated);
-
     try {
       const dbUpdates: any = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -368,21 +458,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (updates.experience !== undefined) dbUpdates.experience = updates.experience;
       if (updates.availability !== undefined) dbUpdates.availability = updates.availability;
       if (updates.trustScore !== undefined) dbUpdates.trust_score = updates.trustScore;
-      if (updates.github !== undefined) dbUpdates.github_url = updates.github;
-      if (updates.linkedin !== undefined) dbUpdates.linkedin_url = updates.linkedin;
+      if (updates.profile_completed !== undefined) dbUpdates.profile_completed = updates.profile_completed;
 
-      // Map Supabase metadata updates if provided
-      if (updates.github_username !== undefined) dbUpdates.github_username = updates.github_username;
-      if (updates.github_avatar !== undefined) dbUpdates.github_avatar = updates.github_avatar;
-      if (updates.github_connected !== undefined) dbUpdates.github_connected = updates.github_connected;
-      if (updates.github_connected_at !== undefined) dbUpdates.github_connected_at = updates.github_connected_at;
+      // Handle github updates explicitly:
+      if ("github" in updates) dbUpdates.github_url = updates.github ?? null;
+      if ("github_username" in updates) dbUpdates.github_username = updates.github_username ?? null;
+      if ("github_avatar" in updates) dbUpdates.github_avatar = updates.github_avatar ?? null;
+      if ("github_connected" in updates) dbUpdates.github_connected = updates.github_connected ?? null;
+      if ("github_connected_at" in updates) dbUpdates.github_connected_at = updates.github_connected_at ?? null;
 
-      // Map Supabase LinkedIn updates if provided
-      if (updates.linkedin_url !== undefined) dbUpdates.linkedin_url = updates.linkedin_url;
-      if (updates.linkedin_name !== undefined) dbUpdates.linkedin_name = updates.linkedin_name;
-      if (updates.linkedin_avatar !== undefined) dbUpdates.linkedin_avatar = updates.linkedin_avatar;
-      if (updates.linkedin_connected !== undefined) dbUpdates.linkedin_connected = updates.linkedin_connected;
-      if (updates.linkedin_connected_at !== undefined) dbUpdates.linkedin_connected_at = updates.linkedin_connected_at;
+      // Handle linkedin updates explicitly:
+      if ("linkedin_url" in updates) dbUpdates.linkedin_url = updates.linkedin_url ?? null;
+      if ("linkedin_name" in updates) dbUpdates.linkedin_name = updates.linkedin_name ?? null;
+      if ("linkedin_avatar" in updates) dbUpdates.linkedin_avatar = updates.linkedin_avatar ?? null;
+      if ("linkedin_connected" in updates) dbUpdates.linkedin_connected = updates.linkedin_connected ?? null;
+      if ("linkedin_connected_at" in updates) dbUpdates.linkedin_connected_at = updates.linkedin_connected_at ?? null;
 
       if (Object.keys(dbUpdates).length > 0) {
         const { error: profileError } = await supabase
@@ -428,9 +518,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
+
+      // Functional state updates to local React state
+      setUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          ...updates,
+          github_username: "github_username" in updates ? updates.github_username : prev.github_username,
+          github_avatar: "github_avatar" in updates ? updates.github_avatar : prev.github_avatar,
+          github_connected: "github_connected" in updates ? updates.github_connected : prev.github_connected,
+          github_connected_at: "github_connected_at" in updates ? updates.github_connected_at : prev.github_connected_at,
+          github: "github" in updates ? updates.github : prev.github,
+
+          linkedin_name: "linkedin_name" in updates ? updates.linkedin_name : prev.linkedin_name,
+          linkedin_avatar: "linkedin_avatar" in updates ? updates.linkedin_avatar : prev.linkedin_avatar,
+          linkedin_url: "linkedin_url" in updates ? updates.linkedin_url : prev.linkedin_url,
+          linkedin_connected: "linkedin_connected" in updates ? updates.linkedin_connected : prev.linkedin_connected,
+          linkedin_connected_at: "linkedin_connected_at" in updates ? updates.linkedin_connected_at : prev.linkedin_connected_at,
+          linkedin: "linkedin" in updates ? updates.linkedin : ("linkedin_url" in updates ? updates.linkedin_url : prev.linkedin),
+        } as User;
+      });
     } catch (err: any) {
       console.error("Error updating user profile in Supabase:", err);
-      toast.error("Failed to save changes to database.");
+      toast.error(err?.message || "Failed to save changes to database.");
+      throw err;
+    }
+  };
+
+  const disconnectGithub = async () => {
+    if (!user) return;
+    try {
+      const { disconnectGithub: disconnectGhService } = await import("@/lib/githubService");
+      await disconnectGhService(user.id);
+
+      setUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          github: undefined,
+          github_username: undefined,
+          github_avatar: undefined,
+          github_connected: false,
+          github_connected_at: undefined,
+        } as User;
+      });
+
+      // Clear local caches
+      localStorage.removeItem("hackos_github_analytics");
+      toast.success("GitHub disconnected successfully!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to disconnect GitHub");
+    }
+  };
+
+  const disconnectLinkedIn = async () => {
+    if (!user) return;
+    try {
+      const { disconnectLinkedIn: disconnectLiService } = await import("@/lib/linkedinService");
+      await disconnectLiService(user.id);
+
+      setUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          linkedin: undefined,
+          linkedin_url: undefined,
+          linkedin_avatar: undefined,
+          linkedin_name: undefined,
+          linkedin_connected: false,
+          linkedin_connected_at: undefined,
+        } as User;
+      });
+
+      toast.success("LinkedIn disconnected successfully!");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to disconnect LinkedIn");
     }
   };
 
@@ -442,7 +607,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout, updateUser, reloadProfile }}>
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      login,
+      signup,
+      logout,
+      updateUser,
+      reloadProfile,
+      disconnectGithub,
+      disconnectLinkedIn,
+    }}>
       {children}
     </AuthContext.Provider>
   );

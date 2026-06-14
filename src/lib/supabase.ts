@@ -9,5 +9,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(
   supabaseUrl || "https://dsdaqwttyrwvvkjtljyd.supabase.co",
-  supabaseAnonKey || "sb_publishable_TzXVzrzEWRATj8o5nKeP1Q_dVZ19lll"
+  supabaseAnonKey || "sb_publishable_TzXVzrzEWRATj8o5nKeP1Q_dVZ19lll",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
 );
