@@ -1,13 +1,16 @@
 
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import HackathonRegistrationModal from "@/components/features/HackathonRegistrationModal";
 import {
   ArrowLeft, Calendar, Users, MapPin, Trophy, Clock, Share2,
   Bookmark, CheckCircle, Globe, Mail, ChevronRight
 } from "lucide-react";
-import { FEATURED_HACKATHONS } from "@/lib/mockData";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { deserializeHackathon } from "@/lib/utils";
+import { Hackathon } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
 
 const TIMELINE = [
   { date: "Jun 15", label: "Registration Closes", status: "upcoming" },
@@ -31,8 +34,183 @@ const FAQS = [
 
 export default function HackathonDetail() {
   const { id } = useParams();
-  const hack = FEATURED_HACKATHONS.find((h) => h.id === id) || FEATURED_HACKATHONS[0];
+  const { user } = useAuth();
+  const [hack, setHack] = useState<Hackathon | null>(null);
+  const [loading, setLoading] = useState(true);
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  
+  // Real-time Chat States
+  const [messages, setMessages] = useState<any[]>([]);
+  const [msgText, setMsgText] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+
+  useEffect(() => {
+    async function loadHackathon() {
+      try {
+        const { data, error } = await supabase
+          .from("hackathons")
+          .select("*")
+          .eq("id", id)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) {
+          setHack(deserializeHackathon(data));
+        } else {
+          setHack(null);
+        }
+      } catch (err) {
+        console.error("Error loading hackathon details from Supabase:", err);
+        setHack(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadHackathon();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-hack-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-2 border-hack-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-white/40 text-sm">Loading hackathon details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hack) {
+    return (
+      <div className="min-h-screen bg-hack-bg flex flex-col items-center justify-center gap-4 text-center p-6">
+        <div className="text-5xl">🔍</div>
+        <h2 className="text-white font-700 text-xl">Hackathon Not Found</h2>
+        <p className="text-white/40 text-sm max-w-xs">This event may have been deleted or is not live.</p>
+        <Link to="/discover" className="hack-btn-primary px-5 py-2 text-xs">
+          Discover Other Hackathons
+        </Link>
+      </div>
+    );
+  }
+
+  useEffect(() => {
+    if (!user || !id) return;
+
+    async function loadMessages() {
+      try {
+        const { data, error } = await supabase
+          .from("messages")
+          .select("*")
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        if (data) {
+          const chatHistory = data.map((msg: any) => {
+            try {
+              const contentObj = JSON.parse(msg.content);
+              return {
+                id: msg.id,
+                senderId: msg.sender_id,
+                createdAt: msg.created_at,
+                ...contentObj
+              };
+            } catch (e) {
+              return null;
+            }
+          }).filter((msg: any) => 
+            msg && 
+            msg.hackathon_id === id && 
+            (msg.senderId === user.id || msg.reply_to_sender_id === user.id)
+          );
+          setMessages(chatHistory);
+        }
+      } catch (err) {
+        console.error("Error loading chat history:", err);
+      }
+    }
+    loadMessages();
+
+    // Subscribe to new messages for true real-time communication
+    const channel = supabase
+      .channel(`chat-${id}-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          try {
+            const newMsg = payload.new;
+            const contentObj = JSON.parse(newMsg.content);
+            if (
+              contentObj.hackathon_id === id &&
+              (newMsg.sender_id === user.id || contentObj.reply_to_sender_id === user.id)
+            ) {
+              setMessages((prev) => {
+                // Prevent duplicate additions
+                if (prev.some((m) => m.id === newMsg.id)) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: newMsg.id,
+                    senderId: newMsg.sender_id,
+                    createdAt: newMsg.created_at,
+                    ...contentObj
+                  }
+                ];
+              });
+            }
+          } catch (e) {
+            // Ignore parse errors from other messages
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [id, user?.id]);
+
+  const sendMessage = async () => {
+    if (!msgText.trim()) return;
+    if (!user || !hack) {
+      toast.error("Please login to send questions to the organizer.");
+      return;
+    }
+
+    setSendingMsg(true);
+    try {
+      const payload = {
+        hackathon_id: hack.id,
+        sender_name: user.name,
+        text: msgText.trim()
+      };
+
+      const { error } = await supabase
+        .from("messages")
+        .insert({
+          sender_id: user.id,
+          content: JSON.stringify(payload)
+        });
+
+      if (error) throw error;
+      setMsgText("");
+      toast.success("Question sent to organizer!");
+    } catch (err: any) {
+      console.error("Error sending question:", err);
+      toast.error(err.message || "Failed to send message.");
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  if (loading || !hack) {
+    return (
+      <div className="min-h-screen bg-hack-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-2 border-hack-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-white/40 text-sm">Loading hackathon details...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -244,6 +422,69 @@ export default function HackathonDetail() {
                 </div>
               </div>
             </div>
+
+            {/* Ask the Organizer */}
+            <div className="hack-card p-5 space-y-4">
+              <h3 className="text-white font-600 text-sm flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-hack-primary animate-pulse" />
+                Ask the Organizer
+              </h3>
+
+              {/* Chat Thread */}
+              {user ? (
+                <div className="space-y-3 max-h-48 overflow-y-auto pr-1 flex flex-col gap-2">
+                  {messages.length === 0 ? (
+                    <p className="text-white/30 text-xs text-center py-4">No questions sent yet. Ask something about this event!</p>
+                  ) : (
+                    messages.map((m) => {
+                      const isMe = m.senderId === user.id;
+                      return (
+                        <div
+                          key={m.id}
+                          className={`max-w-[85%] rounded-2xl p-2.5 text-xs ${
+                            isMe
+                              ? "self-end bg-hack-primary/20 text-white border border-hack-primary/25"
+                              : "self-start bg-white/5 text-white/80 border border-white/5"
+                          }`}
+                        >
+                          <div className="text-[10px] text-white/40 mb-1">
+                            {isMe ? "You" : m.sender_name || "Organizer"}
+                          </div>
+                          <div className="leading-relaxed break-words">{m.text}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : (
+                <p className="text-white/30 text-xs text-center py-4">
+                  Please log in to chat with the organizer.
+                </p>
+              )}
+
+              {user && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={msgText}
+                    onChange={(e) => setMsgText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    placeholder="Type your question..."
+                    disabled={sendingMsg}
+                    className="hack-input flex-1 py-2 text-xs"
+                    style={{ borderRadius: "10px" }}
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={sendingMsg}
+                    className="hack-btn-primary px-3 text-xs"
+                    style={{ borderRadius: "10px" }}
+                  >
+                    Send
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -252,6 +493,7 @@ export default function HackathonDetail() {
         hack={hack}
         isOpen={registrationOpen}
         onClose={() => setRegistrationOpen(false)}
+        customFields={hack.requirements}
       />
     </>
   );

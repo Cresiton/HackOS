@@ -5,6 +5,8 @@ import {
   Users, MessageSquare, Image as ImageIcon, Mic, AtSign,
   ChevronDown, Star
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -33,121 +35,7 @@ interface Conversation {
   typing?: boolean;
 }
 
-// ─── Constants ─────────────────────────────────────────────────────────────────
 const EMOJI_LIST = ["👍", "❤️", "😂", "🔥", "🚀", "💯", "✅", "🎉", "👏", "😮"];
-
-const ALL_CONVERSATIONS: Conversation[] = [
-  {
-    id: "c1",
-    name: "Rahul Kumar",
-    lastMessage: "We need an ML Engineer urgently. You'd be a 95% match!",
-    time: "10:30 AM",
-    unread: 2,
-    isOnline: true,
-    isTeam: false,
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul&backgroundColor=c0aede",
-    pinned: true,
-  },
-  {
-    id: "c2",
-    name: "AI Resume Screener",
-    lastMessage: "Priya: Just pushed the ML model update 🚀",
-    time: "9:45 AM",
-    unread: 3,
-    isOnline: true,
-    isTeam: true,
-    icon: "🤖",
-    pinned: true,
-  },
-  {
-    id: "c3",
-    name: "Ananya Singh",
-    lastMessage: "Check out this cool AI paper I found!",
-    time: "Yesterday",
-    unread: 0,
-    isOnline: true,
-    isTeam: false,
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya&backgroundColor=ffd5dc",
-  },
-  {
-    id: "c4",
-    name: "GreenConnect Team",
-    lastMessage: "You: Working on the sustainability module",
-    time: "Mon",
-    unread: 0,
-    isOnline: false,
-    isTeam: true,
-    icon: "🌱",
-  },
-  {
-    id: "c5",
-    name: "Ishita Das",
-    lastMessage: "The Figma designs are ready! Check them out 🎨",
-    time: "Sun",
-    unread: 0,
-    isOnline: false,
-    isTeam: false,
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ishita&backgroundColor=d1f7c4",
-  },
-  {
-    id: "c6",
-    name: "Devansh Verma",
-    lastMessage: "Can you review my backend PR?",
-    time: "Sat",
-    unread: 0,
-    isOnline: true,
-    isTeam: false,
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=devansh&backgroundColor=ffdfbf",
-  },
-  {
-    id: "c7",
-    name: "PrepHub Team",
-    lastMessage: "Kiran: Deployment done ✓",
-    time: "Fri",
-    unread: 0,
-    isOnline: false,
-    isTeam: true,
-    icon: "📚",
-  },
-];
-
-const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
-  c1: [
-    { id: "1", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "Hey! Are you available for the hackathon next week?", time: "10:20 AM", date: "today", status: "seen" },
-    { id: "2", sender: "me", text: "Hey Rahul! Yes, I'm free. Which hackathon?", time: "10:22 AM", date: "today", status: "seen" },
-    { id: "3", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "AI Innovation Challenge! From Jun 20-22. Total prize pool ₹1 Lakh 🔥", time: "10:23 AM", date: "today", status: "seen" },
-    { id: "4", sender: "me", text: "That sounds amazing! I've been working on some ML models recently. What roles does your team need?", time: "10:25 AM", date: "today", status: "seen" },
-    { id: "5", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "We need an ML Engineer urgently. Our backend and frontend are covered.", time: "10:27 AM", date: "today", status: "seen" },
-    { id: "6", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "You'd be a 95% match! Let me know ASAP, registration closes tomorrow 🚀", time: "10:30 AM", date: "today", status: "seen" },
-  ],
-  c2: [
-    { id: "1", sender: "them", senderName: "Priya K", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=priya", text: "Team sync today at 6pm? We need to review the architecture.", time: "8:00 AM", date: "today", status: "seen" },
-    { id: "2", sender: "me", text: "Sure! I'll be there. Should I prep the demo flow?", time: "8:15 AM", date: "today", status: "seen" },
-    { id: "3", sender: "them", senderName: "Rahul M", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahulm", text: "Frontend is 80% done. Just need the API endpoints.", time: "9:00 AM", date: "today", status: "seen" },
-    { id: "4", sender: "them", senderName: "Priya K", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=priya", text: "Just pushed the ML model update 🚀", time: "9:45 AM", date: "today", status: "seen" },
-  ],
-  c3: [
-    { id: "1", sender: "them", senderName: "Ananya Singh", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya", text: "Hey! Great work at the last hackathon btw.", time: "3:00 PM", date: "yesterday", status: "seen" },
-    { id: "2", sender: "me", text: "Thanks! Your ML model was the real star 😄", time: "3:30 PM", date: "yesterday", status: "seen" },
-    { id: "3", sender: "them", senderName: "Ananya Singh", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya", text: "Check out this cool AI paper I found!", time: "4:00 PM", date: "yesterday", status: "seen" },
-  ],
-};
-
-// ─── localStorage helpers ──────────────────────────────────────────────────────
-function loadMessages(convId: string): ChatMessage[] {
-  try {
-    const stored = localStorage.getItem(`hackos_chat_${convId}`);
-    return stored ? JSON.parse(stored) : INITIAL_CHAT_MESSAGES[convId] || [];
-  } catch {
-    return INITIAL_CHAT_MESSAGES[convId] || [];
-  }
-}
-
-function saveMessages(convId: string, messages: ChatMessage[]) {
-  try {
-    localStorage.setItem(`hackos_chat_${convId}`, JSON.stringify(messages));
-  } catch {}
-}
 
 // ─── ConvItem ─────────────────────────────────────────────────────────────────
 function ConvItem({
@@ -412,29 +300,25 @@ function TypingIndicator({ name }: { name: string }) {
 
 // ─── Main Messages Component ──────────────────────────────────────────────────
 export default function Messages() {
-  const [conversations, setConversations] = useState<Conversation[]>(ALL_CONVERSATIONS);
-  const [selectedId, setSelectedId] = useState<string>("c1");
-  const [allMessages, setAllMessages] = useState<Record<string, ChatMessage[]>>(() => {
-    const initial: Record<string, ChatMessage[]> = {};
-    ALL_CONVERSATIONS.forEach((c) => {
-      initial[c.id] = loadMessages(c.id);
-    });
-    return initial;
-  });
+  const { user } = useAuth();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [allMessages, setAllMessages] = useState<Record<string, ChatMessage[]>>({});
   const [messageInput, setMessageInput] = useState("");
   const [search, setSearch] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [scrolledUp, setScrolledUp] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const selectedConv = conversations.find((c) => c.id === selectedId)!;
-  const currentMessages = allMessages[selectedId] || [];
+  const selectedConv = conversations.find((c) => c.id === selectedId);
+  const currentMessages = selectedId ? (allMessages[selectedId] || []) : [];
 
   // Scroll to bottom
   const scrollToBottom = useCallback((smooth = true) => {
@@ -449,92 +333,343 @@ export default function Messages() {
     if (!scrolledUp) scrollToBottom();
   }, [currentMessages, scrolledUp]);
 
-  // Simulate typing indicator
-  useEffect(() => {
-    if (selectedId === "c1") {
-      const timer = setTimeout(() => setIsTyping(true), 8000);
-      const timer2 = setTimeout(() => {
-        setIsTyping(false);
-        const autoMsg: ChatMessage = {
-          id: Date.now().toString(),
-          sender: "them",
-          senderName: "Rahul Kumar",
-          senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul",
-          text: "Let me know soon! Our team needs someone by tomorrow 🙏",
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          date: "today",
-          status: "seen",
-        };
-        updateMessages(selectedId, [...(allMessages[selectedId] || []), autoMsg]);
-      }, 11500);
-      return () => { clearTimeout(timer); clearTimeout(timer2); };
-    }
-  }, [selectedId]);
+  const loadConversations = async (targetSelectId?: string) => {
+    if (!user) return;
+    try {
+      const { data: myMemberships, error: memberErr } = await supabase
+        .from("conversation_members")
+        .select("conversation_id")
+        .eq("user_id", user.id);
+      if (memberErr) throw memberErr;
 
-  const updateMessages = (convId: string, msgs: ChatMessage[]) => {
-    setAllMessages((prev) => {
-      const next = { ...prev, [convId]: msgs };
-      saveMessages(convId, msgs);
-      return next;
-    });
+      if (!myMemberships || myMemberships.length === 0) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+
+      const convIds = myMemberships.map(m => m.conversation_id);
+
+      const { data: allMemberships, error: allMemErr } = await supabase
+        .from("conversation_members")
+        .select("conversation_id, user_id, profiles (id, name, avatar_url, github_avatar, linkedin_avatar)")
+        .in("conversation_id", convIds);
+      if (allMemErr) throw allMemErr;
+
+      const { data: conversationsMetadata, error: metaErr } = await supabase
+        .from("conversations")
+        .select("*")
+        .in("id", convIds);
+      if (metaErr) throw metaErr;
+
+      const teamIds = conversationsMetadata.map(c => c.team_id).filter(Boolean);
+      let teamsMap: Record<string, any> = {};
+      if (teamIds.length > 0) {
+        const { data: teamsData } = await supabase
+          .from("teams")
+          .select("id, name, icon, color, category")
+          .in("id", teamIds);
+        if (teamsData) {
+          teamsData.forEach(t => { teamsMap[t.id] = t; });
+        }
+      }
+
+      const { data: lastMessagesData } = await supabase
+        .from("messages")
+        .select("*")
+        .in("conversation_id", convIds)
+        .order("created_at", { ascending: false });
+
+      const lastMessagesMap: Record<string, any> = {};
+      if (lastMessagesData) {
+        lastMessagesData.forEach(msg => {
+          if (!lastMessagesMap[msg.conversation_id]) {
+            lastMessagesMap[msg.conversation_id] = msg;
+          }
+        });
+      }
+
+      const convMembersMap: Record<string, any[]> = {};
+      allMemberships.forEach(m => {
+        if (!convMembersMap[m.conversation_id]) {
+          convMembersMap[m.conversation_id] = [];
+        }
+        const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        if (profile) convMembersMap[m.conversation_id].push(profile);
+      });
+
+      const formattedConvs = conversationsMetadata.map((c: any) => {
+        const lastMsg = lastMessagesMap[c.id];
+        const members = convMembersMap[c.id] || [];
+        const otherMember = members.find(m => m.id !== user.id);
+
+        let name = "Direct Chat";
+        let avatar = undefined;
+        let icon = "🎯";
+        let color = "#7C5CFF";
+
+        if (c.is_team && c.team_id && teamsMap[c.team_id]) {
+          const team = teamsMap[c.team_id];
+          name = team.name;
+          icon = team.icon || "🤖";
+          color = team.color || "#7C5CFF";
+        } else if (otherMember) {
+          name = otherMember.name;
+          avatar = otherMember.linkedin_avatar || otherMember.github_avatar || otherMember.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherMember.name}`;
+        }
+
+        const lastText = lastMsg
+          ? (lastMsg.sender_id === user.id ? `You: ${lastMsg.content}` : lastMsg.content)
+          : "No messages yet";
+
+        const lastTime = lastMsg
+          ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : "";
+
+        return {
+          id: c.id,
+          name: name,
+          lastMessage: lastText,
+          time: lastTime,
+          unread: 0,
+          isOnline: true,
+          isTeam: c.is_team,
+          avatar: avatar,
+          icon: icon,
+          color: color,
+          pinned: false,
+        };
+      });
+
+      setConversations(formattedConvs);
+
+      if (formattedConvs.length > 0) {
+        if (targetSelectId) {
+          setSelectedId(targetSelectId);
+        } else if (!selectedId) {
+          setSelectedId(formattedConvs[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading conversations:", err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const loadMessagesForActiveConversation = async () => {
+    if (!selectedId || !user) return;
+    try {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*, profiles:sender_id (id, name, avatar_url, github_avatar, linkedin_avatar)")
+        .eq("conversation_id", selectedId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+
+      const formatted = (data || []).map((m: any) => {
+        const senderProfile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        return {
+          id: m.id,
+          sender: m.sender_id === user.id ? ("me" as const) : ("them" as const),
+          senderName: senderProfile?.name || "Builder",
+          senderAvatar: senderProfile?.linkedin_avatar || senderProfile?.github_avatar || senderProfile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderProfile?.name || 'builder'}`,
+          text: m.content || "",
+          time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+          status: "seen" as const,
+        };
+      });
+
+      setAllMessages(prev => ({ ...prev, [selectedId]: formatted }));
+    } catch (err) {
+      console.error("Error loading messages for active conversation:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadMessagesForActiveConversation();
+  }, [selectedId, user]);
+
+  useEffect(() => {
+    if (!selectedId || !user) return;
+
+    const channel = supabase
+      .channel(`chat-room-${selectedId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${selectedId}`
+        },
+        async (payload) => {
+          const newMsg = payload.new as any;
+          
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("name, avatar_url, github_avatar, linkedin_avatar")
+            .eq("id", newMsg.sender_id)
+            .single();
+
+          const avatar = profileData?.linkedin_avatar || profileData?.github_avatar || profileData?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData?.name || 'builder'}`;
+
+          const formattedMsg: ChatMessage = {
+            id: newMsg.id,
+            sender: newMsg.sender_id === user.id ? "me" : "them",
+            senderName: profileData?.name || "Builder",
+            senderAvatar: avatar,
+            text: newMsg.content || "",
+            time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(newMsg.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
+            status: "seen",
+          };
+
+          setAllMessages(prev => {
+            const list = prev[selectedId] || [];
+            if (list.some(m => m.id === formattedMsg.id)) return prev;
+            return { ...prev, [selectedId]: [...list, formattedMsg] };
+          });
+
+          setConversations(prev => prev.map(c => {
+            if (c.id === selectedId) {
+              return {
+                ...c,
+                lastMessage: newMsg.sender_id === user.id ? `You: ${newMsg.content}` : newMsg.content,
+                time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              };
+            }
+            return c;
+          }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedId, user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const targetUserId = searchParams.get("user_id");
+    const targetTeamId = searchParams.get("team_id");
+
+    async function initializeConversations() {
+      if (targetUserId) {
+        const { data: userMemberships } = await supabase
+          .from("conversation_members")
+          .select("conversation_id")
+          .eq("user_id", user.id);
+
+        const convIds = (userMemberships || []).map(m => m.conversation_id);
+
+        let existingConvId = null;
+        if (convIds.length > 0) {
+          const { data: matches } = await supabase
+            .from("conversations")
+            .select("id, conversation_members!inner(user_id)")
+            .eq("is_team", false)
+            .in("id", convIds)
+            .eq("conversation_members.user_id", targetUserId);
+          
+          if (matches && matches.length > 0) {
+            existingConvId = matches[0].id;
+          }
+        }
+
+        if (existingConvId) {
+          loadConversations(existingConvId);
+        } else {
+          const { data: newConv } = await supabase
+            .from("conversations")
+            .insert({ is_team: false })
+            .select("id")
+            .single();
+
+          if (newConv) {
+            await supabase.from("conversation_members").insert([
+              { conversation_id: newConv.id, user_id: user.id },
+              { conversation_id: newConv.id, user_id: targetUserId }
+            ]);
+            loadConversations(newConv.id);
+          }
+        }
+      } else if (targetTeamId) {
+        const { data: matches } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("is_team", true)
+          .eq("team_id", targetTeamId)
+          .maybeSingle();
+
+        if (matches) {
+          loadConversations(matches.id);
+        } else {
+          const { data: newConv } = await supabase
+            .from("conversations")
+            .insert({ is_team: true, team_id: targetTeamId })
+            .select("id")
+            .single();
+
+          if (newConv) {
+            const { data: teamMems } = await supabase
+              .from("team_members")
+              .select("user_id")
+              .eq("team_id", targetTeamId);
+            
+            const insertRows = (teamMems || []).map(m => ({
+              conversation_id: newConv.id,
+              user_id: m.user_id
+            }));
+            if (!insertRows.some(r => r.user_id === user.id)) {
+              insertRows.push({ conversation_id: newConv.id, user_id: user.id });
+            }
+
+            if (insertRows.length > 0) {
+              await supabase.from("conversation_members").insert(insertRows);
+            }
+            loadConversations(newConv.id);
+          }
+        }
+      } else {
+        loadConversations();
+      }
+    }
+
+    initializeConversations();
+  }, [user]);
 
   const selectConversation = (id: string) => {
     setSelectedId(id);
     setShowMobileChat(true);
     setIsTyping(false);
-    // Mark as read
-    setConversations((prev) => prev.map((c) => c.id === id ? { ...c, unread: 0 } : c));
   };
 
-  const handleSend = () => {
-    if (!messageInput.trim()) return;
+  const handleSend = async () => {
+    if (!messageInput.trim() || !selectedId || !user) return;
 
-    const newMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: "me",
-      text: messageInput,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      date: "today",
-      status: "sent",
-    };
-
-    updateMessages(selectedId, [...currentMessages, newMsg]);
+    const content = messageInput.trim();
     setMessageInput("");
     setShowEmoji(false);
-
-    // Update last message in conv list
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === selectedId
-          ? { ...c, lastMessage: `You: ${messageInput}`, time: newMsg.time }
-          : c
-      )
-    );
-
-    // Simulate "delivered" after 0.5s
-    setTimeout(() => {
-      setAllMessages((prev) => {
-        const msgs = [...(prev[selectedId] || [])];
-        const idx = msgs.findIndex((m) => m.id === newMsg.id);
-        if (idx !== -1) msgs[idx] = { ...msgs[idx], status: "delivered" };
-        saveMessages(selectedId, msgs);
-        return { ...prev, [selectedId]: msgs };
-      });
-    }, 500);
-
-    // Simulate "seen" after 1.5s
-    setTimeout(() => {
-      setAllMessages((prev) => {
-        const msgs = [...(prev[selectedId] || [])];
-        const idx = msgs.findIndex((m) => m.id === newMsg.id);
-        if (idx !== -1) msgs[idx] = { ...msgs[idx], status: "seen" };
-        saveMessages(selectedId, msgs);
-        return { ...prev, [selectedId]: msgs };
-      });
-    }, 1500);
-
     inputRef.current?.focus();
+
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: selectedId,
+          sender_id: user.id,
+          content: content
+        });
+      if (error) throw error;
+    } catch (err) {
+      console.error("Error sending message:", err);
+      toast.error("Failed to send message");
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

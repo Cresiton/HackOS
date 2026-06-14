@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronRight, Calendar, Users, Compass, MapPin, Star,
@@ -7,19 +7,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTimeGreeting } from "@/lib/auth";
-import {
-  FEATURED_HACKATHONS, LIVE_TEAM_REQUESTS, TEAMMATES, MY_TEAMS
-} from "@/lib/mockData";
 import { MOTIVATIONAL_QUOTES } from "@/constants";
 import aiRobot from "@/assets/ai-robot.png";
 import organizerIllustration from "@/assets/organizer-illustration.png";
+import { supabase } from "@/lib/supabase";
+import { deserializeHackathon } from "@/lib/utils";
+import { Hackathon } from "@/types";
 
-const STATS = [
-  { label: "Upcoming Hackathons", value: "8", icon: Calendar, color: "#7C5CFF", iconBg: "rgba(124,92,255,0.15)" },
-  { label: "Team Invites", value: "12", icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
-  { label: "My Teams", value: "3", icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
-  { label: "Available Hackathons", value: "850", icon: Compass, color: "#F59E0B", iconBg: "rgba(245,158,11,0.15)" },
-];
+import { Teammate, Team, TeamRequest } from "@/types";
 
 function MatchScoreRing({ score, size = 44 }: { score: number; size?: number }) {
   const radius = (size - 8) / 2;
@@ -51,6 +46,246 @@ export default function Dashboard() {
   const quote = MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [locationFilter, setLocationFilter] = useState("All Locations");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dbHackathons, setDbHackathons] = useState<Hackathon[]>([]);
+  const [dbTeammates, setDbTeammates] = useState<Teammate[]>([]);
+  const [dbMyTeams, setDbMyTeams] = useState<Team[]>([]);
+  const [dbLiveRequests, setDbLiveRequests] = useState<TeamRequest[]>([]);
+  const [stats, setStats] = useState([
+    { label: "Upcoming Hackathons", value: "0", icon: Calendar, color: "#7C5CFF", iconBg: "rgba(124,92,255,0.15)" },
+    { label: "Team Invites", value: "0", icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
+    { label: "My Teams", value: "0", icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
+    { label: "Available Hackathons", value: "0", icon: Compass, color: "#F59E0B", iconBg: "rgba(245,158,11,0.15)" },
+  ]);
+
+  useEffect(() => {
+    async function loadFeaturedHackathons() {
+      try {
+        const { data, error } = await supabase
+          .from("hackathons")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(4);
+        if (error) throw error;
+        if (data) {
+          setDbHackathons(data.map(deserializeHackathon));
+        }
+      } catch (err) {
+        console.error("Error loading hackathons for dashboard:", err);
+      }
+    }
+    loadFeaturedHackathons();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    async function loadDashboardData() {
+      try {
+        // 1. Stats Counts
+        const { count: upcomingCount } = await supabase
+          .from("hackathons")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "upcoming");
+
+        const { count: invitesCount } = await supabase
+          .from("team_requests")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("status", "pending");
+
+        const { count: myTeamsCount } = await supabase
+          .from("team_members")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+
+        const { count: availableCount } = await supabase
+          .from("hackathons")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "open");
+
+        setStats([
+          { label: "Upcoming Hackathons", value: String(upcomingCount || 0), icon: Calendar, color: "#7C5CFF", iconBg: "rgba(124,92,255,0.15)" },
+          { label: "Team Invites", value: String(invitesCount || 0), icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
+          { label: "My Teams", value: String(myTeamsCount || 0), icon: Users, color: "#4F7CFF", iconBg: "rgba(79,124,255,0.15)" },
+          { label: "Available Hackathons", value: String(availableCount || 0), icon: Compass, color: "#F59E0B", iconBg: "rgba(245,158,11,0.15)" },
+        ]);
+
+        // 2. Fetch Teammates/Profiles
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("*")
+          .neq("id", user.id)
+          .limit(10);
+
+        if (profiles) {
+          const { data: skillsData } = await supabase
+            .from("user_skills")
+            .select("user_id, skills (name)");
+
+          const userSkillsMap: Record<string, string[]> = {};
+          if (skillsData) {
+            skillsData.forEach((row: any) => {
+              const skillName = row.skills?.name;
+              if (skillName && row.user_id) {
+                if (!userSkillsMap[row.user_id]) {
+                  userSkillsMap[row.user_id] = [];
+                }
+                userSkillsMap[row.user_id].push(skillName);
+              }
+            });
+          }
+
+          const formattedTeammates = profiles.map((p: any, idx: number) => {
+            const skills = userSkillsMap[p.id] || [];
+            let score = 80 + (idx * 3) % 19;
+            return {
+              id: p.id,
+              name: p.name,
+              role: p.role || "Full Stack Developer",
+              location: p.location || "Online",
+              skills: skills,
+              rating: Number(p.rating) || 5.0,
+              matchScore: score,
+              isOnline: true,
+              avatar: p.linkedin_avatar || p.github_avatar || p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}`,
+              college: p.college || ""
+            };
+          });
+          setDbTeammates(formattedTeammates);
+        }
+
+        // 3. Fetch My Teams
+        const { data: userMemberships } = await supabase
+          .from("team_members")
+          .select("team_id")
+          .eq("user_id", user.id);
+
+        if (userMemberships && userMemberships.length > 0) {
+          const teamIds = userMemberships.map(m => m.team_id);
+          const { data: teamsData } = await supabase
+            .from("teams")
+            .select("*")
+            .in("id", teamIds);
+
+          const { data: hackathonsData } = await supabase
+            .from("hackathons")
+            .select("id, title");
+          const hackonMap = (hackathonsData || []).reduce((acc: any, h: any) => {
+            acc[h.id] = h.title;
+            return acc;
+          }, {});
+
+          const { data: allMemberships } = await supabase
+            .from("team_members")
+            .select("team_id, role, profiles (id, name, avatar_url, github_avatar, linkedin_avatar)")
+            .in("team_id", teamIds);
+
+          if (teamsData) {
+            const formattedTeams = teamsData.map((t: any) => {
+              const teamMembers = (allMemberships || [])
+                .filter((m: any) => m.team_id === t.id)
+                .map((m: any) => {
+                  const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+                  return {
+                    id: profile?.id || m.user_id,
+                    name: profile?.name || "Unknown Builder",
+                    avatar: profile?.linkedin_avatar || profile?.github_avatar || profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.name || 'builder'}`,
+                    role: m.role || "Member",
+                  };
+                });
+
+              return {
+                id: t.id,
+                name: t.name,
+                hackathon: hackonMap[t.hackathon_id] || "AI Innovation Challenge",
+                members: teamMembers,
+                maxMembers: t.max_members || 4,
+                progress: t.progress || 0,
+                status: t.status || "recruiting",
+                requiredRoles: [],
+                description: t.description || "",
+                category: t.category || "General",
+                color: t.color || "#7C5CFF",
+                icon: t.icon || "🎯",
+              };
+            });
+            setDbMyTeams(formattedTeams);
+          }
+        } else {
+          setDbMyTeams([]);
+        }
+
+        // 4. Fetch Live Team Requests
+        const { data: allTeams } = await supabase
+          .from("teams")
+          .select("*")
+          .eq("status", "recruiting")
+          .limit(10);
+
+        if (allTeams) {
+          const { data: hackathonsData } = await supabase
+            .from("hackathons")
+            .select("id, title");
+          const hackonMap = (hackathonsData || []).reduce((acc: any, h: any) => {
+            acc[h.id] = h.title;
+            return acc;
+          }, {});
+
+          const allTeamIds = allTeams.map(t => t.id);
+          const { data: allTeamMemberships } = await supabase
+            .from("team_members")
+            .select("team_id, role, user_id, profiles (name)")
+            .in("team_id", allTeamIds);
+
+          const formattedRequests = allTeams
+            .filter(t => {
+              const isMember = (allTeamMemberships || []).some(m => m.team_id === t.id && m.user_id === user.id);
+              return !isMember;
+            })
+            .map((t, idx) => {
+              const members = (allTeamMemberships || []).filter(m => m.team_id === t.id);
+              const leaderObj = members.find(m => m.role === "leader");
+              const leaderProfile = leaderObj ? (Array.isArray(leaderObj.profiles) ? leaderObj.profiles[0] : leaderObj.profiles) : null;
+              return {
+                id: t.id,
+                teamName: t.name,
+                requiredRole: "Developer",
+                members: members.length,
+                maxMembers: t.max_members || 4,
+                location: "Online",
+                matchScore: 85 + (idx * 4) % 14,
+                isOnline: true,
+                teamLeader: leaderProfile?.name || "Leader",
+                hackathon: hackonMap[t.hackathon_id] || "AI Innovation Challenge",
+                color: t.color || "#7C5CFF",
+                icon: t.icon || "🎯",
+                extraMembers: Math.max(0, members.length - 3),
+              };
+            });
+          setDbLiveRequests(formattedRequests);
+        }
+      } catch (err) {
+        console.error("Error loading dashboard metrics:", err);
+      }
+    }
+    loadDashboardData();
+  }, [user]);
+
+  const filteredTeammates = dbTeammates.filter(t => {
+    if (roleFilter !== "All Roles" && t.role !== roleFilter) return false;
+    if (locationFilter !== "All Locations" && !t.location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const roleMatch = t.role.toLowerCase().includes(q);
+      const skillMatch = t.skills.some(s => s.toLowerCase().includes(q));
+      const nameMatch = t.name.toLowerCase().includes(q);
+      return roleMatch || skillMatch || nameMatch;
+    }
+    return true;
+  });
+
+  const allFeaturedHackathons = dbHackathons.slice(0, 4);
 
   return (
     <div className="flex h-full">
@@ -67,7 +302,7 @@ export default function Dashboard() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {STATS.map((stat) => (
+            {stats.map((stat) => (
               <div key={stat.label} className="stat-card">
                 <div className="flex items-center justify-between mb-3">
                   <div
@@ -94,7 +329,7 @@ export default function Dashboard() {
             </div>
 
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
-              {FEATURED_HACKATHONS.slice(0, 4).map((hack) => (
+              {allFeaturedHackathons.map((hack) => (
                 <Link key={hack.id} to={`/hackathon/${hack.id}`} className="block flex-shrink-0 w-64">
                   <div className="hack-card overflow-hidden">
                     <div className="relative">
@@ -214,6 +449,8 @@ export default function Dashboard() {
               <div className="relative flex-1 min-w-40">
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by skill or role..."
                   className="hack-input py-2 text-xs"
                   style={{ borderRadius: "10px" }}
@@ -222,7 +459,7 @@ export default function Dashboard() {
             </div>
 
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
-              {TEAMMATES.map((teammate) => (
+              {filteredTeammates.map((teammate) => (
                 <div key={teammate.id} className="hack-card p-4 flex-shrink-0 w-52">
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
@@ -278,7 +515,7 @@ export default function Dashboard() {
               <h2 className="text-white font-700 text-lg">My Teams & Active Rooms</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {MY_TEAMS.map((team) => (
+              {dbMyTeams.map((team) => (
                 <Link key={team.id} to="/my-teams" className="block">
                   <div className="hack-card p-4">
                     <div className="flex items-center gap-3 mb-3">
@@ -388,7 +625,7 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-3">
-            {LIVE_TEAM_REQUESTS.map((req) => (
+            {dbLiveRequests.map((req) => (
               <div
                 key={req.id}
                 className="p-4 rounded-2xl transition-all hover:border-white/15 cursor-pointer"
