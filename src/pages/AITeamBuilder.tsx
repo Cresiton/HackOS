@@ -6,9 +6,11 @@ import {
   BarChart3, Clock, TrendingUp
 } from "lucide-react";
 import { analyzeTeamRequirements } from "@/lib/groq";
-import { TEAMMATES } from "@/lib/mockData";
 import { toast } from "sonner";
 import aiRobot from "@/assets/ai-robot.png";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import { Teammate } from "@/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface RoleSuggestion {
@@ -133,7 +135,7 @@ function RoleCard({
   role: RoleSuggestion;
   index: number;
   onRemove: () => void;
-  candidates: typeof TEAMMATES;
+  candidates: Teammate[];
   onInvite: (name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -341,6 +343,8 @@ const STREAM_TEXTS = [
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AITeamBuilder() {
+  const { user } = useAuth();
+  const [dbProfiles, setDbProfiles] = useState<Teammate[]>([]);
   const [problemStatement, setProblemStatement] = useState("");
   const [teamSize, setTeamSize] = useState(3);
   const [hackathon, setHackathon] = useState("");
@@ -353,6 +357,54 @@ export default function AITeamBuilder() {
   const [streamText, setStreamText] = useState("");
   const [showResults, setShowResults] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function fetchProfiles() {
+      try {
+        const { data: profiles, error: pError } = await supabase
+          .from("profiles")
+          .select("*");
+        if (pError) throw pError;
+
+        const { data: skillsData, error: sError } = await supabase
+          .from("user_skills")
+          .select("user_id, skills (name)");
+        if (sError) throw sError;
+
+        const userSkillsMap: Record<string, string[]> = {};
+        if (skillsData) {
+          skillsData.forEach((row: any) => {
+            const skillName = row.skills?.name;
+            if (skillName && row.user_id) {
+              if (!userSkillsMap[row.user_id]) {
+                userSkillsMap[row.user_id] = [];
+              }
+              userSkillsMap[row.user_id].push(skillName);
+            }
+          });
+        }
+
+        const formatted = (profiles || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          role: p.role || "Full Stack Developer",
+          location: p.location || "Online",
+          skills: userSkillsMap[p.id] || [],
+          rating: Number(p.rating) || 5.0,
+          matchScore: 90,
+          isOnline: true,
+          avatar: p.linkedin_avatar || p.github_avatar || p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}`,
+          college: p.college || "Unknown"
+        }));
+
+        setDbProfiles(formatted);
+      } catch (err) {
+        console.error("Error fetching database profiles:", err);
+      }
+    }
+
+    fetchProfiles();
+  }, []);
 
   const EXAMPLES = [
     "Build an AI-powered cattle health monitoring system using IoT sensors and ML to predict diseases early",
@@ -421,18 +473,47 @@ export default function AITeamBuilder() {
   const removeRole = (index: number) => setRoles(roles.filter((_, i) => i !== index));
   const addRole = () => setRoles([...roles, { role: "Custom Role", reason: "Added manually", priority: "optional", skills: [] }]);
 
-  const getCandidatesForRole = (role: string) => {
+  const getCandidatesForRole = (roleName: string) => {
     const roleKeywords: Record<string, string[]> = {
-      "Backend Developer": ["Node.js", "Express", "PostgreSQL", "MongoDB", "Python"],
-      "Frontend Developer": ["React", "Next.js", "Vue.js", "TypeScript", "CSS"],
-      "ML Engineer": ["Python", "TensorFlow", "PyTorch", "Machine Learning"],
-      "UI/UX Designer": ["Figma", "Adobe XD", "UI Design", "Prototyping"],
-      "Full Stack Developer": ["React", "Node.js"],
+      "Backend Developer": ["Node.js", "Express", "PostgreSQL", "MongoDB", "Python", "Node", "Backend", "API"],
+      "Frontend Developer": ["React", "Next.js", "Vue.js", "TypeScript", "CSS", "Frontend", "UI"],
+      "ML Engineer": ["Python", "TensorFlow", "PyTorch", "Machine Learning", "AI", "Data", "ML"],
+      "UI/UX Designer": ["Figma", "Adobe XD", "UI Design", "Prototyping", "Design", "UX"],
+      "Full Stack Developer": ["React", "Node.js", "Full Stack", "TypeScript", "Fullstack"],
     };
-    const keywords = roleKeywords[role] || [];
-    return TEAMMATES.filter((t) =>
-      keywords.some((kw) => t.skills.some((s) => s.toLowerCase().includes(kw.toLowerCase())))
-    );
+    const keywords = roleKeywords[roleName] || roleName.split(" ");
+    
+    return dbProfiles
+      .filter((t) => t.id !== user?.id)
+      .map((t) => {
+        let matches = 0;
+        const lowerRole = t.role.toLowerCase();
+        const lowerRoleName = roleName.toLowerCase();
+        
+        if (lowerRole.includes(lowerRoleName) || lowerRoleName.includes(lowerRole)) {
+          matches += 3;
+        }
+        
+        keywords.forEach(kw => {
+          if (lowerRole.includes(kw.toLowerCase())) matches += 2;
+          t.skills.forEach((s: string) => {
+            if (s.toLowerCase().includes(kw.toLowerCase())) matches += 1;
+          });
+        });
+        
+        const matchScore = Math.min(98, 70 + (matches * 4));
+        return { ...t, matchScore };
+      })
+      .filter(t => {
+        const lowerRole = t.role.toLowerCase();
+        const lowerRoleName = roleName.toLowerCase();
+        const hasRoleMatch = lowerRole.includes(lowerRoleName) || lowerRoleName.includes(lowerRole);
+        const hasSkillMatch = t.skills.some((s: string) => 
+          keywords.some(kw => s.toLowerCase().includes(kw.toLowerCase()))
+        );
+        return hasRoleMatch || hasSkillMatch;
+      })
+      .sort((a, b) => b.matchScore - a.matchScore);
   };
 
   const handleInvite = (name: string) => toast.success(`Invite sent to ${name}!`);
@@ -761,7 +842,7 @@ export default function AITeamBuilder() {
                   <span className="text-white/30 text-xs">AI-ranked for your project</span>
                 </div>
                 <div className="space-y-3">
-                  {TEAMMATES.slice(0, 4).map((candidate, i) => (
+                  {dbProfiles.filter(p => p.id !== user?.id).slice(0, 4).map((candidate, i) => (
                     <div
                       key={candidate.id}
                       className="flex items-center gap-3 p-3.5 rounded-xl transition-all group"

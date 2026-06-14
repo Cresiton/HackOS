@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import HackathonRegistrationModal from "@/components/features/HackathonRegistrationModal";
 import { Link } from "react-router-dom";
 import {
   Search, Bookmark, Share2, Clock, Users,
   Trophy, Grid, List
 } from "lucide-react";
-import { FEATURED_HACKATHONS } from "@/lib/mockData";
 import { Hackathon } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { deserializeHackathon } from "@/lib/utils";
 
 const FILTERS = {
   mode: ["All", "Online", "Offline", "Hybrid"],
@@ -129,7 +130,27 @@ export default function DiscoverHackathons() {
     setRegistrationOpen(true);
   };
 
-  const filtered = FEATURED_HACKATHONS.filter((h) => {
+  const [dbHackathons, setDbHackathons] = useState<Hackathon[]>([]);
+
+  useEffect(() => {
+    async function loadHackathons() {
+      try {
+        const { data, error } = await supabase
+          .from("hackathons")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        if (data) {
+          setDbHackathons(data.map(deserializeHackathon));
+        }
+      } catch (err) {
+        console.error("Error loading hackathons from Supabase:", err);
+      }
+    }
+    loadHackathons();
+  }, []);
+
+  const filtered = dbHackathons.filter((h) => {
     const matchSearch = !search ||
       h.title.toLowerCase().includes(search.toLowerCase()) ||
       h.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
@@ -240,6 +261,7 @@ export default function DiscoverHackathons() {
           hack={selectedHack}
           isOpen={registrationOpen}
           onClose={() => { setRegistrationOpen(false); setSelectedHack(null); }}
+          customFields={selectedHack.requirements}
         />
       )}
 

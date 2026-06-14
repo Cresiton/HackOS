@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import {
   Search, Bell, MessageSquare, Plus, ChevronDown,
   Compass, Users, Settings, LogOut, User, Menu, Zap, Command
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { NOTIFICATIONS } from "@/lib/mockData";
+import { supabase } from "@/lib/supabase";
 
 interface TopNavProps {
   onToggleSidebar: () => void;
@@ -14,11 +14,44 @@ interface TopNavProps {
 export default function TopNav({ onToggleSidebar }: TopNavProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const unreadNotifications = NOTIFICATIONS.filter(n => !n.read).length;
+  useEffect(() => {
+    if (!user) return;
+
+    async function loadUnreadCount() {
+      const { count } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("read", false);
+      setUnreadCount(count || 0);
+    }
+    loadUnreadCount();
+
+    const channel = supabase
+      .channel(`topnav-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadUnreadCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const handleLogout = () => {
     logout();
@@ -142,8 +175,8 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
         className="relative p-2 rounded-xl text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
       >
         <Bell size={18} />
-        {unreadNotifications > 0 && (
-          <span className="notification-badge absolute -top-1 -right-1">{unreadNotifications}</span>
+        {unreadCount > 0 && (
+          <span className="notification-badge absolute -top-1 -right-1">{unreadCount}</span>
         )}
       </NavLink>
 

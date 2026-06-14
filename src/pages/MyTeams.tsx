@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus, Users, Calendar, ArrowRight, Settings, MessageSquare,
   LayoutGrid, CheckCircle, Clock, Star, ExternalLink
 } from "lucide-react";
-import { MY_TEAMS } from "@/lib/mockData";
 import { Team } from "@/types";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 const STATUS_CONFIG = {
   recruiting: { label: "Recruiting", color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
@@ -212,11 +213,151 @@ function TeamDetailPanel({ team, onClose }: { team: Team; onClose: () => void })
 }
 
 export default function MyTeams() {
+  const { user } = useAuth();
+  const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [activeFilter, setActiveFilter] = useState("All");
+  const [loading, setLoading] = useState(true);
+
+  // Creation modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategory, setNewCategory] = useState("AI/ML");
+  const [newMaxMembers, setNewMaxMembers] = useState(4);
+  const [newHackathonId, setNewHackathonId] = useState("");
+  const [hackathonsList, setHackathonsList] = useState<any[]>([]);
+
+  const loadUserTeams = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data: userMemberships, error: memberErr } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user.id);
+      if (memberErr) throw memberErr;
+
+      if (!userMemberships || userMemberships.length === 0) {
+        setTeams([]);
+        setLoading(false);
+        return;
+      }
+
+      const teamIds = userMemberships.map(m => m.team_id);
+      const { data: teamsData, error: teamsErr } = await supabase
+        .from("teams")
+        .select("*")
+        .in("id", teamIds);
+      if (teamsErr) throw teamsErr;
+
+      const { data: hackathonsData } = await supabase
+        .from("hackathons")
+        .select("id, title");
+      const hackonMap = (hackathonsData || []).reduce((acc: any, h: any) => {
+        acc[h.id] = h.title;
+        return acc;
+      }, {});
+
+      const { data: allMemberships, error: membersErr } = await supabase
+        .from("team_members")
+        .select("team_id, role, profiles (id, name, avatar_url, github_avatar, linkedin_avatar)")
+        .in("team_id", teamIds);
+      if (membersErr) throw membersErr;
+
+      const formattedTeams = (teamsData || []).map((t: any) => {
+        const teamMembers = (allMemberships || [])
+          .filter((m: any) => m.team_id === t.id)
+          .map((m: any) => {
+            const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+            return {
+              id: profile?.id || m.user_id,
+              name: profile?.name || "Unknown Builder",
+              avatar: profile?.linkedin_avatar || profile?.github_avatar || profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.name || 'builder'}`,
+              role: m.role || "Member",
+            };
+          });
+
+        return {
+          id: t.id,
+          name: t.name,
+          hackathon: hackonMap[t.hackathon_id] || "AI Innovation Challenge",
+          members: teamMembers,
+          maxMembers: t.max_members || 4,
+          progress: t.progress || 0,
+          status: t.status || "recruiting",
+          requiredRoles: [],
+          description: t.description || "",
+          category: t.category || "General",
+          color: t.color || "#7C5CFF",
+          icon: t.icon || "🎯",
+        };
+      });
+
+      setTeams(formattedTeams);
+    } catch (err) {
+      console.error("Error loading teams:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUserTeams();
+    async function loadHackathons() {
+      const { data } = await supabase.from("hackathons").select("id, title");
+      if (data) setHackathonsList(data);
+    }
+    loadHackathons();
+  }, [user]);
+
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamName.trim() || !newHackathonId) {
+      toast.error("Please enter a team name and select a hackathon.");
+      return;
+    }
+    try {
+      const { data: newTeam, error: teamErr } = await supabase
+        .from("teams")
+        .insert({
+          name: newTeamName,
+          description: newDescription,
+          category: newCategory,
+          max_members: newMaxMembers,
+          hackathon_id: newHackathonId,
+          progress: 0,
+          status: "recruiting",
+          color: "#7C5CFF",
+          icon: "🤖"
+        })
+        .select("*")
+        .single();
+      if (teamErr) throw teamErr;
+
+      const { error: memErr } = await supabase
+        .from("team_members")
+        .insert({
+          team_id: newTeam.id,
+          user_id: user?.id,
+          role: "leader"
+        });
+      if (memErr) throw memErr;
+
+      toast.success("Team created successfully! 🎉");
+      setShowCreateModal(false);
+      setNewTeamName("");
+      setNewDescription("");
+      setNewMaxMembers(4);
+      loadUserTeams();
+    } catch (err) {
+      console.error("Error creating team:", err);
+      toast.error("Failed to create team.");
+    }
+  };
 
   const filters = ["All", "Recruiting", "Active", "Completed"];
-  const filtered = MY_TEAMS.filter((t) => {
+  const filtered = teams.filter((t) => {
     if (activeFilter === "All") return true;
     return t.status.toLowerCase() === activeFilter.toLowerCase();
   });
@@ -227,10 +368,10 @@ export default function MyTeams() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-white font-700 text-2xl mb-1">My Teams</h1>
-          <p className="text-white/40 text-sm">{MY_TEAMS.length} active teams</p>
+          <p className="text-white/40 text-sm">{teams.length} active teams</p>
         </div>
         <button
-          onClick={() => toast.success("Team creation coming soon!")}
+          onClick={() => setShowCreateModal(true)}
           className="hack-btn-primary"
         >
           <Plus size={16} />
@@ -256,7 +397,10 @@ export default function MyTeams() {
         ))}
       </div>
 
-      {/* Teams Grid */}
+      {loading ? (
+        <div className="text-center py-12 text-white/40">Loading teams...</div>
+      ) : (
+        /* Teams Grid */
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {filtered.map((team) => {
           const status = STATUS_CONFIG[team.status];
@@ -348,7 +492,7 @@ export default function MyTeams() {
 
         {/* Create New Team */}
         <button
-          onClick={() => toast.success("Team creation coming soon!")}
+          onClick={() => setShowCreateModal(true)}
           className="hack-card p-6 flex flex-col items-center justify-center text-center min-h-60 border-dashed hover:border-hack-primary/30 transition-colors"
           style={{ borderColor: "rgba(255,255,255,0.07)" }}
         >
@@ -362,6 +506,7 @@ export default function MyTeams() {
           <div className="text-white/40 text-sm">Start a team and invite builders</div>
         </button>
       </div>
+      )}
 
       {/* Team Detail Panel */}
       {selectedTeam && (
@@ -372,6 +517,94 @@ export default function MyTeams() {
           />
           <TeamDetailPanel team={selectedTeam} onClose={() => setSelectedTeam(null)} />
         </>
+      )}
+
+      {/* Create Team Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="hack-card w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-white font-700 text-lg">Create New Team</h2>
+              <button onClick={() => setShowCreateModal(false)} className="text-white/45 hover:text-white/70">✕</button>
+            </div>
+            <form onSubmit={handleCreateTeam} className="space-y-4">
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Team Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. AI resume parser"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="hack-input"
+                />
+              </div>
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Description</label>
+                <textarea
+                  placeholder="What is your team building?"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  className="hack-input h-20 resize-none animate-fade-in"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-white/60 text-xs mb-1.5 font-500">Category</label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="hack-input"
+                  >
+                    {["AI/ML", "Web", "GreenTech", "IoT", "FinTech", "EdTech", "Security"].map((c) => (
+                      <option key={c} value={c} style={{ background: "#131826" }}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-white/60 text-xs mb-1.5 font-500">Max Members</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={newMaxMembers}
+                    onChange={(e) => setNewMaxMembers(Number(e.target.value))}
+                    className="hack-input"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Select Hackathon *</label>
+                <select
+                  required
+                  value={newHackathonId}
+                  onChange={(e) => setNewHackathonId(e.target.value)}
+                  className="hack-input"
+                >
+                  <option value="" style={{ background: "#131826" }}>-- Choose Event --</option>
+                  {hackathonsList.map((h) => (
+                    <option key={h.id} value={h.id} style={{ background: "#131826" }}>{h.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="hack-btn-secondary flex-1 justify-center py-2.5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="hack-btn-primary flex-1 justify-center py-2.5"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

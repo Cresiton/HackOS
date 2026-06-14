@@ -9,25 +9,41 @@ import {
 import { Hackathon } from "@/types";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 
 // ─── Dynamic schema builder ───────────────────────────────────────────────────
 function buildSchema(fields: FormFieldConfig[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   fields.forEach((field) => {
-    if (!field.required) return;
+    let schemaField: z.ZodTypeAny;
+
     switch (field.type) {
       case "email":
-        shape[field.id] = z.string().email("Enter a valid email address");
+        schemaField = z.string().email("Enter a valid email address");
+        break;
+      case "number":
+        schemaField = z.string().regex(/^\d+$/, "Must be a valid number");
         break;
       case "tel":
-        shape[field.id] = z.string().min(10, "Enter a valid phone number").max(15, "Too long");
+        schemaField = z.string().min(10, "Enter a valid phone number").max(15, "Too long");
         break;
       case "file":
-        shape[field.id] = z.any().optional();
+        schemaField = z.any();
         break;
       default:
-        shape[field.id] = z.string().min(1, `${field.label} is required`);
+        schemaField = z.string();
     }
+
+    if (field.required) {
+      if (field.type !== "file") {
+        schemaField = (schemaField as z.ZodString).min(1, `${field.label} is required`);
+      }
+    } else {
+      schemaField = schemaField.optional().nullable();
+    }
+
+    shape[field.id] = schemaField;
   });
   return z.object(shape);
 }
@@ -93,9 +109,66 @@ function RegistrationForm({
 
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
 
+  const { user } = useAuth();
+
   const onSubmit = async (data: FormValues) => {
-    await new Promise((r) => setTimeout(r, 1500));
-    onSuccess(data);
+    try {
+      // Map form outputs dynamically
+      let name = user?.name || "Anonymous";
+      let email = user?.email || "";
+      let college = "";
+      let resume_url = "";
+      let experience = "";
+      const answers: Record<string, any> = {};
+
+      Object.entries(data).forEach(([key, val]) => {
+        const field = fields.find(f => f.id === key);
+        if (!field) return;
+
+        const labelLower = field.label.toLowerCase();
+
+        if (key === "fullName" || labelLower.includes("full name") || labelLower === "name") {
+          name = String(val);
+        } else if (field.type === "email" || key === "email" || labelLower.includes("email")) {
+          email = String(val);
+        } else if (key === "college" || labelLower.includes("college") || labelLower.includes("university")) {
+          college = String(val);
+        } else if (field.type === "file" || key === "resume" || labelLower.includes("resume") || labelLower.includes("portfolio")) {
+          if (val && (val as any).name) {
+            resume_url = (val as any).name;
+          } else if (val) {
+            resume_url = String(val);
+          }
+        } else if (key === "experience" || labelLower.includes("experience")) {
+          experience = String(val);
+        } else {
+          answers[key] = val;
+        }
+      });
+
+      const regRecord = {
+        hackathon_id: hack.id,
+        user_id: user?.id || null,
+        name,
+        email,
+        college,
+        resume_url,
+        experience,
+        answers,
+        status: "registered"
+      };
+
+      const { error } = await supabase
+        .from("registrations")
+        .insert(regRecord);
+
+      if (error) throw error;
+
+      onSuccess(data);
+    } catch (err: any) {
+      console.error("Error registering for hackathon:", err);
+      toast.error(err.message || "Failed to register. Please try again.");
+    }
   };
 
   return (

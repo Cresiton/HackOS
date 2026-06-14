@@ -53,6 +53,7 @@ export interface Hackathon {
   difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
   teamSize?: string;
   status: 'open' | 'closed' | 'upcoming';
+  requirements?: any[];
 }
 
 export interface Team {

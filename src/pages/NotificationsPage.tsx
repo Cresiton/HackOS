@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Bell, Users, Trophy, User, MessageSquare, AlertTriangle,
   CheckCheck, Trash2, Filter, ArrowRight, ChevronRight
 } from "lucide-react";
-import { NOTIFICATIONS } from "@/lib/mockData";
 import { Notification } from "@/types";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 const TYPE_CONFIG = {
   team: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
@@ -16,8 +17,63 @@ const TYPE_CONFIG = {
 };
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>(NOTIFICATIONS);
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeFilter, setActiveFilter] = useState<"all" | "unread">("all");
+  const [loading, setLoading] = useState(true);
+
+  const loadNotifications = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      
+      const formatted = (data || []).map((n: any) => ({
+        id: n.id,
+        type: n.type || "alert",
+        title: n.title || "",
+        description: n.description || "",
+        timestamp: new Date(n.created_at).toLocaleDateString() + " " + new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: n.read || false,
+        actionUrl: n.action_url || undefined,
+        actionLabel: n.action_label || undefined,
+      }));
+      setNotifications(formatted);
+    } catch (err) {
+      console.error("Error loading notifications:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+
+    if (!user) return;
+    const channel = supabase
+      .channel(`page-notifications-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   const filtered = notifications.filter((n) => {
     if (activeFilter === "unread") return !n.read;
@@ -26,18 +82,49 @@ export default function NotificationsPage() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, read: true })));
-    toast.success("All notifications marked as read");
+  const markAllRead = async () => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .eq("user_id", user.id);
+      if (error) throw error;
+
+      toast.success("All notifications marked as read");
+      loadNotifications();
+    } catch (err) {
+      console.error("Error marking all read:", err);
+    }
   };
 
-  const markRead = (id: string) => {
-    setNotifications(notifications.map((n) => n.id === id ? { ...n, read: true } : n));
+  const markRead = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .eq("id", id);
+      if (error) throw error;
+
+      loadNotifications();
+    } catch (err) {
+      console.error("Error marking read:", err);
+    }
   };
 
-  const deleteNotif = (id: string) => {
-    setNotifications(notifications.filter((n) => n.id !== id));
-    toast.success("Notification removed");
+  const deleteNotif = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+
+      toast.success("Notification removed");
+      loadNotifications();
+    } catch (err) {
+      console.error("Error deleting notification:", err);
+    }
   };
 
   return (
