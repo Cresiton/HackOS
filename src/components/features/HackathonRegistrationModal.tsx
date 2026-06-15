@@ -146,16 +146,12 @@ function RegistrationForm({
         }
       });
 
+      // Insert registrations matching SQL schema
       const regRecord = {
         hackathon_id: hack.id,
         user_id: user?.id || null,
-        name,
-        email,
-        college,
-        resume_url,
-        experience,
-        answers,
-        status: "registered"
+        participation_type: "individual",
+        role: "Solo Participant"
       };
 
       const { error } = await supabase
@@ -163,6 +159,17 @@ function RegistrationForm({
         .insert(regRecord);
 
       if (error) throw error;
+
+      if (user?.id) {
+        await supabase
+          .from("profiles")
+          .update({
+            name,
+            college,
+            experience
+          })
+          .eq("id", user.id);
+      }
 
       onSuccess(data);
     } catch (err: any) {
@@ -319,7 +326,7 @@ function SuccessScreen({
           <button onClick={() => setView("success")} className="hack-btn-secondary flex-1 justify-center">
             <ArrowLeft size={14} /> Back
           </button>
-          <Link to="/my-teams" className="flex-1">
+          <Link to={`/create-team?hackathon_id=${hack.id}`} className="flex-1">
             <button onClick={onClose} className="hack-btn-primary w-full justify-center">
               <Sparkles size={14} /> Create Team
             </button>
@@ -373,7 +380,7 @@ function SuccessScreen({
           <button onClick={() => setView("success")} className="hack-btn-secondary flex-1 justify-center">
             <ArrowLeft size={14} /> Back
           </button>
-          <Link to="/my-requests" className="flex-1">
+          <Link to={`/discover-teams?hackathon_id=${hack.id}`} className="flex-1">
             <button onClick={onClose} className="hack-btn-secondary w-full justify-center">
               View All Teams
             </button>
@@ -434,20 +441,24 @@ function SuccessScreen({
       <div className="space-y-2">
         <p className="text-white/40 text-sm">What would you like to do next?</p>
         <div className="grid grid-cols-1 gap-2">
-          <button
-            onClick={() => setView("createTeam")}
-            className="hack-btn-primary w-full justify-center py-3"
-          >
-            <Plus size={15} />
-            Create a Team
-          </button>
-          <button
-            onClick={() => setView("joinTeam")}
-            className="hack-btn-secondary w-full justify-center py-2.5"
-          >
-            <Users size={15} />
-            Join an Existing Team
-          </button>
+          <Link to={`/create-team?hackathon_id=${hack.id}`} className="w-full">
+            <button
+              onClick={onClose}
+              className="hack-btn-primary w-full justify-center py-3"
+            >
+              <Plus size={15} />
+              Create a Team
+            </button>
+          </Link>
+          <Link to={`/discover-teams?hackathon_id=${hack.id}`} className="w-full">
+            <button
+              onClick={onClose}
+              className="hack-btn-secondary w-full justify-center py-2.5"
+            >
+              <Users size={15} />
+              Join an Existing Team
+            </button>
+          </Link>
           <button
             onClick={onClose}
             className="text-white/35 hover:text-white/60 text-sm transition-colors py-1"

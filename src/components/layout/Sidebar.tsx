@@ -24,8 +24,8 @@ const NAV_ITEMS = [
 ];
 
 const QUICK_ACTIONS = [
-  { path: "/my-requests",    label: "Create Team Request", icon: Target },
-  { path: "/my-teams",       label: "Join a Team",         icon: Users },
+  { path: "/create-team",    label: "Create Team Request", icon: Target },
+  { path: "/discover-teams", label: "Join a Team",         icon: Users },
   { path: "/ai-team-builder",label: "AI Team Builder",     icon: Sparkles, badge: "New" },
 ];
 

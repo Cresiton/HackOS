@@ -8,11 +8,17 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
-const TYPE_CONFIG = {
+const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
   team: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
+  team_invite: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
+  join_request: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
+  invite_accepted: { icon: Users, color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
+  invite_rejected: { icon: Users, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
   hackathon: { icon: Trophy, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
+  hackathon_registration: { icon: Trophy, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
   profile: { icon: User, color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
   message: { icon: MessageSquare, color: "#4F7CFF", bg: "rgba(79,124,255,0.12)" },
+  team_update: { icon: AlertTriangle, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
   alert: { icon: AlertTriangle, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
 };
 
@@ -32,16 +38,18 @@ export default function NotificationsPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       
-      const formatted = (data || []).map((n: any) => ({
-        id: n.id,
-        type: n.type || "alert",
-        title: n.title || "",
-        description: n.description || "",
-        timestamp: new Date(n.created_at).toLocaleDateString() + " " + new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        read: n.read || false,
-        actionUrl: n.action_url || undefined,
-        actionLabel: n.action_label || undefined,
-      }));
+      const formatted = (data || []).map((n: any) => {
+        return {
+          id: n.id,
+          type: (n.type || "alert") as any,
+          title: n.title || "",
+          description: n.description || "",
+          timestamp: new Date(n.created_at).toLocaleDateString() + " " + new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          read: !!n.is_read,
+          actionUrl: n.action_url || undefined,
+          actionLabel: n.action_label || undefined,
+        };
+      });
       setNotifications(formatted);
     } catch (err) {
       console.error("Error loading notifications:", err);
@@ -87,8 +95,10 @@ export default function NotificationsPage() {
     try {
       const { error } = await supabase
         .from("notifications")
-        .update({ read: true })
-        .eq("user_id", user.id);
+        .update({ is_read: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      
       if (error) throw error;
 
       toast.success("All notifications marked as read");
@@ -100,9 +110,12 @@ export default function NotificationsPage() {
 
   const markRead = async (id: string) => {
     try {
+      const notif = notifications.find(n => n.id === id);
+      if (!notif || notif.read) return;
+
       const { error } = await supabase
         .from("notifications")
-        .update({ read: true })
+        .update({ is_read: true })
         .eq("id", id);
       if (error) throw error;
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Sparkles, ArrowRight, Loader2, Users, Code, Brain, AlertCircle,
   CheckCircle, Plus, X, RefreshCw, Zap, ChevronDown, Star,
@@ -343,6 +344,7 @@ const STREAM_TEXTS = [
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AITeamBuilder() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [dbProfiles, setDbProfiles] = useState<Teammate[]>([]);
   const [problemStatement, setProblemStatement] = useState("");
@@ -363,7 +365,8 @@ export default function AITeamBuilder() {
       try {
         const { data: profiles, error: pError } = await supabase
           .from("profiles")
-          .select("*");
+          .select("*")
+          .neq("id", user.id);
         if (pError) throw pError;
 
         const { data: skillsData, error: sError } = await supabase
@@ -903,7 +906,13 @@ export default function AITeamBuilder() {
               {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => toast.success("Team blueprint saved! Go to My Teams to create your team.")}
+                  onClick={() => navigate("/create-team", {
+                    state: {
+                      problemStatement,
+                      roles: roles.map(r => ({ role: r.role, qty: 1, skills: r.skills || [] })),
+                      hackathon
+                    }
+                  })}
                   className="hack-btn-primary justify-center py-3"
                 >
                   <Users size={15} />

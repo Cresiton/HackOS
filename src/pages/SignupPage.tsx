@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, ArrowRight, Github, Linkedin, Loader2, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, ArrowRight, Loader2, CheckCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -104,23 +104,6 @@ export default function SignupPage() {
             boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
           }}
         >
-          {/* Social Auth */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <button className="hack-btn-secondary justify-center py-3 gap-2">
-              <Github size={16} />
-              GitHub
-            </button>
-            <button className="hack-btn-secondary justify-center py-3 gap-2">
-              <Linkedin size={16} />
-              LinkedIn
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 mb-6">
-            <div className="flex-1 h-px bg-white/5" />
-            <span className="text-white/25 text-xs">or with email</span>
-            <div className="flex-1 h-px bg-white/5" />
-          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

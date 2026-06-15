@@ -1,10 +1,9 @@
-
 import { useParams, Link } from "react-router-dom";
-import { useState, useEffect } from "react";
-import HackathonRegistrationModal from "@/components/features/HackathonRegistrationModal";
+import { useState, useEffect, useCallback } from "react";
+
 import {
   ArrowLeft, Calendar, Users, MapPin, Trophy, Clock, Share2,
-  Bookmark, CheckCircle, Globe, Mail, ChevronRight
+  Bookmark, CheckCircle, Globe, Mail, ChevronRight, FileText, ListOrdered, ShieldAlert, HelpCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -12,37 +11,106 @@ import { deserializeHackathon } from "@/lib/utils";
 import { Hackathon } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
 
-const TIMELINE = [
-  { date: "Jun 15", label: "Registration Closes", status: "upcoming" },
-  { date: "Jun 20", label: "Hackathon Starts", status: "upcoming" },
-  { date: "Jun 21", label: "Mentoring Session", status: "upcoming" },
-  { date: "Jun 22", label: "Submission Deadline", status: "upcoming" },
-  { date: "Jun 25", label: "Results Announcement", status: "upcoming" },
-];
-
-const PRIZES = [
-  { place: "1st Place", amount: "₹50,000", extras: ["Gold Medal", "Job Interview", "Mentorship"] },
-  { place: "2nd Place", amount: "₹30,000", extras: ["Silver Medal", "Swag Kit"] },
-  { place: "3rd Place", amount: "₹20,000", extras: ["Bronze Medal"] },
-];
-
-const FAQS = [
-  { q: "Who can participate?", a: "Students and professionals from all backgrounds are welcome." },
-  { q: "Can I participate solo?", a: "No, teams of 2-5 members are required." },
-  { q: "Is this hackathon free?", a: "Yes, participation is completely free." },
-];
-
 export default function HackathonDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const [hack, setHack] = useState<Hackathon | null>(null);
   const [loading, setLoading] = useState(true);
-  const [registrationOpen, setRegistrationOpen] = useState(false);
+
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [participantsCount, setParticipantsCount] = useState(0);
   
   // Real-time Chat States
   const [messages, setMessages] = useState<any[]>([]);
   const [msgText, setMsgText] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+
+  // Dynamic Data Generators
+  const getProblemStatements = (h: Hackathon) => {
+    const descLower = (h.description || "").toLowerCase();
+    if (descLower.includes("problem statement") || descLower.includes("challenges")) {
+      const idx = Math.max(descLower.indexOf("problem statement"), descLower.indexOf("challenges"));
+      const remaining = h.description.substring(idx).split("\n").slice(1, 6);
+      const extracted = remaining.map(l => l.replace(/^[-*•\s\d.]+/g, "").trim()).filter(l => l.length > 8);
+      if (extracted.length > 0) return extracted;
+    }
+    const mainTag = h.tags?.[0] || "Innovation";
+    return [
+      `Design and build a scalable solution addressing real-world challenges in ${mainTag}.`,
+      `Develop a high-performance, user-friendly prototype focusing on accessibility and seamless integration.`,
+      `Create an innovative approach to optimize workflows or data representation in the context of ${h.title}.`
+    ];
+  };
+
+  const getTracks = (h: Hackathon) => {
+    if (h.tags && h.tags.length > 0) {
+      return h.tags.map(t => `${t} Track`);
+    }
+    return ["General Innovation", "AI/ML Track", "Next-Gen Web & Apps"];
+  };
+
+  const getTimeline = (h: Hackathon) => {
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return "TBD";
+      const d = new Date(dateStr);
+      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    };
+    return [
+      { date: formatDate(h.registrationDeadline), label: "Registration Closes", status: "upcoming" },
+      { date: formatDate(h.startDate), label: "Hackathon Starts", status: "upcoming" },
+      { date: formatDate(h.startDate), label: "Opening Ceremony & Mentoring", status: "upcoming" },
+      { date: formatDate(h.endDate), label: "Submission Deadline", status: "upcoming" },
+      { date: formatDate(h.endDate), label: "Results Announcement", status: "upcoming" },
+    ];
+  };
+
+  const getRules = (h: Hackathon) => {
+    const size = h.teamSize || "2-4";
+    return [
+      `Teams must consist of ${size} members. Solo participation is not permitted.`,
+      "All code and assets must be created during the official hacking window.",
+      "Plagiarism or using pre-existing full projects will lead to immediate disqualification.",
+      "Decisions made by the judging panel and organizers are final and binding.",
+      "Submissions must include a demo video (max 3 mins) and a working code repository link."
+    ];
+  };
+
+  const getFAQs = (h: Hackathon) => {
+    return [
+      { q: "Who can participate?", a: "Anyone interested in building cool technology is welcome! Students, professionals, and hobbyists alike." },
+      { q: "How does team formation work?", a: `Teams must consist of ${h.teamSize || "2-4"} members. You can find teammates in our Team Discovery page or create a team after registering.` },
+      { q: "Is there a registration fee?", a: "No, participation in this hackathon is completely free." },
+      { q: "What is the judging criteria?", a: "Projects will be judged on Innovation, Technical Complexity, Practicality/Impact, and the Quality of the submission and demo." }
+    ];
+  };
+
+  const refreshRegistrationStatus = useCallback(async () => {
+    if (!id) return;
+    try {
+      const { count } = await supabase
+        .from("registrations")
+        .select("*", { count: "exact", head: true })
+        .eq("hackathon_id", id);
+      if (count !== null) {
+        setParticipantsCount(count);
+      }
+    } catch (e) {
+      console.error("Error fetching exact participant count:", e);
+    }
+    if (user) {
+      try {
+        const { data } = await supabase
+          .from("registrations")
+          .select("id")
+          .eq("hackathon_id", id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        setIsRegistered(!!data);
+      } catch (e) {
+        console.error("Error checking user registration status:", e);
+      }
+    }
+  }, [id, user]);
 
   useEffect(() => {
     async function loadHackathon() {
@@ -54,7 +122,9 @@ export default function HackathonDetail() {
           .maybeSingle();
         if (error) throw error;
         if (data) {
-          setHack(deserializeHackathon(data));
+          const deserialized = deserializeHackathon(data);
+          setHack(deserialized);
+          setParticipantsCount(deserialized.participants);
         } else {
           setHack(null);
         }
@@ -68,29 +138,11 @@ export default function HackathonDetail() {
     loadHackathon();
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-hack-bg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-hack-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-white/40 text-sm">Loading hackathon details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hack) {
-    return (
-      <div className="min-h-screen bg-hack-bg flex flex-col items-center justify-center gap-4 text-center p-6">
-        <div className="text-5xl">🔍</div>
-        <h2 className="text-white font-700 text-xl">Hackathon Not Found</h2>
-        <p className="text-white/40 text-sm max-w-xs">This event may have been deleted or is not live.</p>
-        <Link to="/discover" className="hack-btn-primary px-5 py-2 text-xs">
-          Discover Other Hackathons
-        </Link>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (hack) {
+      refreshRegistrationStatus();
+    }
+  }, [hack, refreshRegistrationStatus]);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -143,7 +195,6 @@ export default function HackathonDetail() {
               (newMsg.sender_id === user.id || contentObj.reply_to_sender_id === user.id)
             ) {
               setMessages((prev) => {
-                // Prevent duplicate additions
                 if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [
                   ...prev,
@@ -201,7 +252,7 @@ export default function HackathonDetail() {
     }
   };
 
-  if (loading || !hack) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-hack-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -212,6 +263,25 @@ export default function HackathonDetail() {
     );
   }
 
+  if (!hack) {
+    return (
+      <div className="min-h-screen bg-hack-bg flex flex-col items-center justify-center gap-4 text-center p-6">
+        <div className="text-5xl">🔍</div>
+        <h2 className="text-white font-700 text-xl">Hackathon Not Found</h2>
+        <p className="text-white/40 text-sm max-w-xs">This event may have been deleted or is not live.</p>
+        <Link to="/discover" className="hack-btn-primary px-5 py-2 text-xs">
+          Discover Other Hackathons
+        </Link>
+      </div>
+    );
+  }
+
+  const problemStatements = getProblemStatements(hack);
+  const tracks = getTracks(hack);
+  const timeline = getTimeline(hack);
+  const rules = getRules(hack);
+  const faqs = getFAQs(hack);
+
   return (
     <>
       <div className="p-6 lg:p-8 pb-20 max-w-6xl">
@@ -221,7 +291,7 @@ export default function HackathonDetail() {
           Back to Discover
         </Link>
 
-        {/* Hero */}
+        {/* Hero Banner */}
         <div className="relative rounded-3xl overflow-hidden mb-8 h-72">
           <img src={hack.image} alt={hack.title} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-hack-bg via-transparent to-transparent" />
@@ -257,7 +327,7 @@ export default function HackathonDetail() {
             <div className="grid grid-cols-4 gap-3">
               {[
                 { icon: Trophy, label: "Prize Pool", value: hack.prize, color: "#7C5CFF" },
-                { icon: Users, label: "Participants", value: `${hack.participants}+`, color: "#4F7CFF" },
+                { icon: Users, label: "Participants", value: `${participantsCount}+`, color: "#4F7CFF" },
                 { icon: Clock, label: "Days Left", value: `${hack.daysLeft}d`, color: "#F59E0B" },
                 { icon: Users, label: "Team Size", value: hack.teamSize || "2-4", color: "#22C55E" },
               ].map((stat) => (
@@ -274,17 +344,56 @@ export default function HackathonDetail() {
               <h2 className="text-white font-700 text-lg mb-3">About This Hackathon</h2>
               <p className="text-white/60 text-sm leading-relaxed">{hack.description}</p>
               <p className="text-white/60 text-sm leading-relaxed mt-3">
-                Join thousands of innovators from across the country to solve pressing challenges
-                using cutting-edge technology. This hackathon provides participants with resources,
-                mentorship, and exposure to industry leaders.
+                Join innovators to solve pressing challenges using cutting-edge technology. 
+                This hackathon provides participants with resources, mentorship, and exposure to industry leaders.
               </p>
+            </div>
+
+            {/* Problem Statements */}
+            <div className="hack-card p-6">
+              <h2 className="text-white font-700 text-lg mb-4 flex items-center gap-2">
+                <FileText size={18} className="text-hack-primary" />
+                Problem Statements
+              </h2>
+              <div className="space-y-3">
+                {problemStatements.map((statement, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl flex gap-3 text-left"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  >
+                    <div className="text-hack-primary font-700 text-sm">{idx + 1}.</div>
+                    <div className="text-white/80 text-sm leading-relaxed">{statement}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tracks */}
+            <div className="hack-card p-6">
+              <h2 className="text-white font-700 text-lg mb-4 flex items-center gap-2">
+                <ListOrdered size={18} className="text-hack-green" />
+                Event Tracks
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {tracks.map((track, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-2xl text-left"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                  >
+                    <div className="text-white font-600 text-sm mb-1">{track}</div>
+                    <div className="text-white/40 text-xs">Build custom integrations & unique features.</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Timeline */}
             <div className="hack-card p-6">
               <h2 className="text-white font-700 text-lg mb-4">Timeline</h2>
               <div className="space-y-4">
-                {TIMELINE.map((event, i) => (
+                {timeline.map((event, i) => (
                   <div key={i} className="flex items-center gap-4">
                     <div
                       className="w-16 text-center text-xs font-600 px-2 py-1.5 rounded-lg flex-shrink-0"
@@ -304,44 +413,34 @@ export default function HackathonDetail() {
               </div>
             </div>
 
-            {/* Prizes */}
+            {/* Rules */}
             <div className="hack-card p-6">
-              <h2 className="text-white font-700 text-lg mb-4">Prizes & Rewards</h2>
-              <div className="space-y-3">
-                {PRIZES.map((prize, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-4 p-4 rounded-2xl"
-                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+              <h2 className="text-white font-700 text-lg mb-4 flex items-center gap-2">
+                <ShieldAlert size={18} className="text-hack-orange" />
+                Rules & Guidelines
+              </h2>
+              <ul className="space-y-3">
+                {rules.map((rule, idx) => (
+                  <li
+                    key={idx}
+                    className="p-3.5 rounded-2xl text-white/70 text-sm leading-relaxed flex items-start gap-3"
+                    style={{ background: "rgba(255,255,255,0.02)" }}
                   >
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-700 text-sm flex-shrink-0"
-                      style={{
-                        background: i === 0 ? "rgba(245,158,11,0.15)" : i === 1 ? "rgba(200,200,200,0.1)" : "rgba(180,120,50,0.1)",
-                        color: i === 0 ? "#F59E0B" : i === 1 ? "#9CA3AF" : "#CD7F32",
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-white font-600 text-sm">{prize.place}</div>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {prize.extras.map((e) => (
-                          <span key={e} className="tag text-[10px]">{e}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-hack-primary font-700 text-lg">{prize.amount}</div>
-                  </div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-hack-orange mt-2 flex-shrink-0" />
+                    <span>{rule}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
 
             {/* FAQ */}
             <div className="hack-card p-6">
-              <h2 className="text-white font-700 text-lg mb-4">FAQs</h2>
+              <h2 className="text-white font-700 text-lg mb-4 flex items-center gap-2">
+                <HelpCircle size={18} className="text-[#4F7CFF]" />
+                FAQs
+              </h2>
               <div className="space-y-3">
-                {FAQS.map((faq, i) => (
+                {faqs.map((faq, i) => (
                   <div key={i} className="p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <div className="text-white font-600 text-sm mb-1.5">{faq.q}</div>
                     <div className="text-white/50 text-xs leading-relaxed">{faq.a}</div>
@@ -378,33 +477,66 @@ export default function HackathonDetail() {
               <div className="mb-4">
                 <div className="flex justify-between text-xs mb-1.5">
                   <span className="text-white/40">Registration</span>
-                  <span className="text-white/60">{hack.participants}/{hack.maxParticipants || 500}</span>
+                  <span className="text-white/60">{participantsCount}/{hack.maxParticipants || 500}</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${(hack.participants / (hack.maxParticipants || 500)) * 100}%` }} />
+                  <div className="progress-fill" style={{ width: `${Math.min(100, (participantsCount / (hack.maxParticipants || 500)) * 100)}%` }} />
                 </div>
               </div>
 
-              <button
-                onClick={() => setRegistrationOpen(true)}
-                className="hack-btn-primary w-full justify-center py-3 text-base"
-              >
-                Register Now
-              </button>
-              <button className="hack-btn-secondary w-full justify-center mt-2 py-2.5">
-                Create Team
-              </button>
+              {isRegistered ? (
+                <button
+                  disabled
+                  className="hack-btn-secondary w-full justify-center py-3 text-base border-hack-green/30 text-hack-green/80 flex items-center gap-2 cursor-not-allowed"
+                >
+                  <CheckCircle size={16} className="text-hack-green" />
+                  Registered
+                </button>
+              ) : (
+                <Link to={`/register-hackathon/${hack.id}`} className="block w-full">
+                  <button className="hack-btn-primary w-full justify-center py-3 text-base">
+                    Register
+                  </button>
+                </Link>
+              )}
             </div>
 
             {/* Tags */}
-            <div className="hack-card p-5">
-              <h3 className="text-white font-600 text-sm mb-3">Categories</h3>
+            <div className="hack-card p-5 text-left">
+              <h3 className="text-white font-600 text-sm mb-3">Category</h3>
+              <div className="mb-4">
+                <span className="text-sm font-700 px-3.5 py-1.5 rounded-xl bg-hack-primary/20 text-[#A78BFF] border border-hack-primary/30 inline-block">
+                  {hack.category || "General"}
+                </span>
+              </div>
+              <h3 className="text-white font-600 text-xs mb-2 text-white/40">Tags</h3>
               <div className="flex flex-wrap gap-2">
                 {hack.tags.map((tag) => (
                   <span key={tag} className="skill-tag">{tag}</span>
                 ))}
               </div>
             </div>
+
+            {/* Custom Basic Info Fields */}
+            {hack.customFields && hack.customFields.length > 0 && (
+              <div className="hack-card p-5 text-left space-y-3">
+                <h3 className="text-white font-600 text-sm">Additional Info</h3>
+                <div className="space-y-3.5">
+                  {hack.customFields.map((field) => (
+                    <div key={field.id} className="text-sm">
+                      <span className="text-white/40 block text-xs mb-0.5">{field.label}</span>
+                      {field.type === "file" && field.value ? (
+                        <a href={field.value} target="_blank" rel="noopener noreferrer" className="text-hack-primary hover:underline break-all block text-xs">
+                          {field.value}
+                        </a>
+                      ) : (
+                        <span className="text-white font-500 break-words">{field.value || "N/A"}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Organizer */}
             <div className="hack-card p-5">
@@ -489,12 +621,6 @@ export default function HackathonDetail() {
         </div>
       </div>
 
-      <HackathonRegistrationModal
-        hack={hack}
-        isOpen={registrationOpen}
-        onClose={() => setRegistrationOpen(false)}
-        customFields={hack.requirements}
-      />
     </>
   );
 }

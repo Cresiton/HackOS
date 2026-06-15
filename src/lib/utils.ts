@@ -7,6 +7,41 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function deserializeHackathon(dbHack: any): Hackathon {
+  if (!dbHack) {
+    return {
+      id: "",
+      title: "",
+      organizer: "",
+      description: "",
+      image: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=400&h=200&fit=crop",
+      mode: "Online",
+      prize: "TBD",
+      prizeAmount: 0,
+      tags: [],
+      daysLeft: 7,
+      participants: 0,
+      maxParticipants: 500,
+      startDate: "",
+      endDate: "",
+      registrationDeadline: "",
+      location: "",
+      difficulty: "Intermediate",
+      teamSize: "2-4",
+      status: "open",
+      requirements: [
+        { id: "fullName", label: "Full Name", type: "text", required: true },
+        { id: "email", label: "Email Address", type: "email", required: true },
+        { id: "college", label: "College / University", type: "text", required: true },
+        { id: "resume", label: "Resume (PDF) / Photo", type: "file", required: true }
+      ],
+      external: false,
+      eventLink: "",
+      category: "General",
+      team_size_min: 1,
+      team_size_max: 4,
+      customFields: []
+    };
+  }
   let description = dbHack.description || "";
   let tags: string[] = [];
   let location = "";
@@ -18,6 +53,12 @@ export function deserializeHackathon(dbHack: any): Hackathon {
     { id: "college", label: "College / University", type: "text", required: true },
     { id: "resume", label: "Resume (PDF) / Photo", type: "file", required: true }
   ];
+  let external = false;
+  let eventLink = "";
+  let category = "General";
+  let team_size_min = 1;
+  let team_size_max = 4;
+  let customFields: any[] = [];
   
   const parts = description.split("\n\n---METADATA---\n");
   if (parts.length > 1) {
@@ -29,9 +70,33 @@ export function deserializeHackathon(dbHack: any): Hackathon {
       difficulty = (meta.difficulty as 'Beginner' | 'Intermediate' | 'Advanced') || "Intermediate";
       teamSize = meta.teamSize || "2-4";
       requirements = meta.requirements || requirements;
+      external = !!meta.external;
+      eventLink = meta.event_link || "";
+      category = meta.category || "General";
+      customFields = meta.custom_fields || [];
+      
+      if (meta.team_size_min !== undefined) {
+        team_size_min = Number(meta.team_size_min);
+      } else if (teamSize) {
+        const minVal = parseInt(teamSize.split("-")[0], 10);
+        if (!isNaN(minVal)) team_size_min = minVal;
+      }
+      if (meta.team_size_max !== undefined) {
+        team_size_max = Number(meta.team_size_max);
+      } else if (teamSize) {
+        const rangeParts = teamSize.split("-");
+        const maxVal = parseInt(rangeParts[rangeParts.length - 1], 10);
+        if (!isNaN(maxVal)) team_size_max = maxVal;
+      }
     } catch (e) {
       console.error("Error parsing hackathon metadata:", e);
     }
+  } else if (teamSize) {
+    const minVal = parseInt(teamSize.split("-")[0], 10);
+    if (!isNaN(minVal)) team_size_min = minVal;
+    const rangeParts = teamSize.split("-");
+    const maxVal = parseInt(rangeParts[rangeParts.length - 1], 10);
+    if (!isNaN(maxVal)) team_size_max = maxVal;
   }
   
   return {
@@ -54,6 +119,13 @@ export function deserializeHackathon(dbHack: any): Hackathon {
     difficulty: difficulty,
     teamSize: teamSize,
     status: dbHack.status || "open",
-    requirements: requirements
+    requirements: requirements,
+    external: external,
+    eventLink: eventLink,
+    category: category,
+    team_size_min: team_size_min,
+    team_size_max: team_size_max,
+    customFields: customFields
   };
 }
+

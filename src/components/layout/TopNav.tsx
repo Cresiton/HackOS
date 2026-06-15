@@ -15,6 +15,7 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -22,17 +23,48 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
   useEffect(() => {
     if (!user) return;
 
-    async function loadUnreadCount() {
-      const { count } = await supabase
-        .from("notifications")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("read", false);
-      setUnreadCount(count || 0);
-    }
-    loadUnreadCount();
+    async function loadUnreadCounts() {
+      // 1. Notifications
+      try {
+        const { data: notifs } = await supabase
+          .from("notifications")
+          .select("is_read")
+          .eq("user_id", user.id);
+        
+        const unreadNotifs = notifs ? notifs.filter((n: any) => !n.is_read).length : 0;
+        setUnreadCount(unreadNotifs);
+      } catch (e) {
+        console.error("Error loading unread notifications:", e);
+      }
 
-    const channel = supabase
+      // 2. Messages unread count
+      try {
+        const { data: memberships } = await supabase
+          .from("conversation_members")
+          .select("conversation_id")
+          .eq("user_id", user.id);
+        
+        const convIds = (memberships || []).map((m: any) => m.conversation_id);
+        if (convIds.length > 0) {
+          const { data: msgs } = await supabase
+            .from("messages")
+            .select("content, sender_id")
+            .in("conversation_id", convIds)
+            .neq("sender_id", user.id);
+
+          const unreadMsgs = msgs ? msgs.filter((m: any) => !(m.content || "").endsWith("\n\n---SEEN---")).length : 0;
+          setUnreadMsgCount(unreadMsgs);
+        } else {
+          setUnreadMsgCount(0);
+        }
+      } catch (e) {
+        console.error("Error loading unread messages count:", e);
+      }
+    }
+    
+    loadUnreadCounts();
+
+    const channelNotif = supabase
       .channel(`topnav-notifications-${user.id}`)
       .on(
         "postgres_changes",
@@ -43,13 +75,29 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
           filter: `user_id=eq.${user.id}`,
         },
         () => {
-          loadUnreadCount();
+          loadUnreadCounts();
+        }
+      )
+      .subscribe();
+
+    const channelMsg = supabase
+      .channel(`topnav-messages-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "messages",
+        },
+        () => {
+          loadUnreadCounts();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channelNotif);
+      supabase.removeChannel(channelMsg);
     };
   }, [user]);
 
@@ -165,7 +213,9 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
         >
           <MessageSquare size={15} />
           Messages
-          <span className="notification-badge">6</span>
+          {unreadMsgCount > 0 && (
+            <span className="notification-badge">{unreadMsgCount}</span>
+          )}
         </NavLink>
       </nav>
 

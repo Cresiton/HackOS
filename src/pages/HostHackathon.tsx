@@ -34,6 +34,7 @@ interface FormData {
   tags: string[];
   requirements: any[];
   image: string;
+  customFields: any[];
 }
 
 export default function HostHackathon() {
@@ -66,9 +67,15 @@ export default function HostHackathon() {
       { id: "college", label: "College / University", type: "text", required: true },
       { id: "resume", label: "Resume (PDF) / Photo", type: "file", required: true }
     ],
-    image: ""
+    image: "",
+    customFields: []
   });
   const [newTag, setNewTag] = useState("");
+
+  // Step 1 Basic Info Field Builder states
+  const [newBasicFieldName, setNewBasicFieldName] = useState("");
+  const [newBasicFieldType, setNewBasicFieldType] = useState<'text' | 'number' | 'email' | 'textarea' | 'file'>("text");
+  const [newBasicFieldRequired, setNewBasicFieldRequired] = useState(true);
 
   // Step 4 Field Builder states
   const [newFieldName, setNewFieldName] = useState("");
@@ -107,6 +114,33 @@ export default function HostHackathon() {
     setNewFieldName("");
     setNewFieldType("text");
     setNewFieldRequired(true);
+    toast.success("Field added successfully!");
+  };
+
+  const addBasicCustomField = () => {
+    if (!newBasicFieldName.trim()) {
+      toast.error("Please enter a field name.");
+      return;
+    }
+
+    const fieldId = newBasicFieldName.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+    if (form.customFields && form.customFields.some(r => r.id === fieldId)) {
+      toast.error("A field with this name already exists.");
+      return;
+    }
+
+    const newField = {
+      id: fieldId,
+      label: newBasicFieldName.trim(),
+      type: newBasicFieldType,
+      required: newBasicFieldRequired,
+      value: ""
+    };
+
+    update("customFields", [...(form.customFields || []), newField]);
+    setNewBasicFieldName("");
+    setNewBasicFieldType("text");
+    setNewBasicFieldRequired(true);
     toast.success("Field added successfully!");
   };
 
@@ -154,7 +188,6 @@ export default function HostHackathon() {
     }
     loadHosted();
   }, [user]);
-
   // Load registrations and messages for selected hackathon
   useEffect(() => {
     if (!selectedHack) return;
@@ -164,11 +197,40 @@ export default function HostHackathon() {
       try {
         const { data, error } = await supabase
           .from("registrations")
-          .select("*")
+          .select(`
+            id,
+            hackathon_id,
+            user_id,
+            team_id,
+            participation_type,
+            role,
+            created_at,
+            profiles:user_id (
+              name,
+              email,
+              college,
+              experience,
+              linkedin_url,
+              github_username
+            )
+          `)
           .eq("hackathon_id", selectedHack.id)
           .order("created_at", { ascending: false });
         if (error) throw error;
-        setRegistrations(data || []);
+        
+        if (data) {
+          const formatted = data.map((r: any) => ({
+            ...r,
+            name: r.profiles?.name || "Participant",
+            email: r.profiles?.email || "",
+            college: r.profiles?.college || "",
+            experience: r.profiles?.experience || "",
+            resume_url: r.profiles?.linkedin_url || r.profiles?.github_username || ""
+          }));
+          setRegistrations(formatted);
+        } else {
+          setRegistrations([]);
+        }
       } catch (e) {
         console.error("Error fetching registrations:", e);
       }
@@ -266,7 +328,11 @@ export default function HostHackathon() {
         difficulty: "Intermediate",
         teamSize: form.teamSize,
         owner_id: user?.id,
-        requirements: form.requirements
+        requirements: form.requirements,
+        category: form.theme || "General",
+        team_size_min: parseInt(form.teamSize.split("-")[0], 10) || 1,
+        team_size_max: parseInt(form.teamSize.split("-")[form.teamSize.split("-").length - 1], 10) || 4,
+        custom_fields: form.customFields
       };
       const serializedDescription = `${form.description}\n\n---METADATA---\n${JSON.stringify(metadata)}`;
 
@@ -297,7 +363,12 @@ export default function HostHackathon() {
           .select();
 
         if (error) throw error;
-        newlyCreated = data ? deserializeHackathon(data[0]) : null;
+        newlyCreated = (data && data.length > 0) ? deserializeHackathon(data[0]) : null;
+
+        if (!newlyCreated) {
+          throw new Error("Failed to update hackathon. You may not have permission to edit this event.");
+        }
+
         toast.success("Hackathon updated successfully! 🎉");
 
         if (newlyCreated) {
@@ -312,7 +383,12 @@ export default function HostHackathon() {
           .select();
 
         if (error) throw error;
-        newlyCreated = data ? deserializeHackathon(data[0]) : null;
+        newlyCreated = (data && data.length > 0) ? deserializeHackathon(data[0]) : null;
+
+        if (!newlyCreated) {
+          throw new Error("Failed to publish hackathon. Please try again.");
+        }
+
         toast.success("Hackathon published! It's now live on Discover. 🎉");
 
         if (newlyCreated) {
@@ -336,7 +412,8 @@ export default function HostHackathon() {
           { id: "college", label: "College / University", type: "text", required: true },
           { id: "resume", label: "Resume (PDF) / Photo", type: "file", required: true }
         ],
-        image: ""
+        image: "",
+        customFields: []
       });
       setStep(1);
     } catch (error: any) {
@@ -449,7 +526,8 @@ export default function HostHackathon() {
                     { id: "college", label: "College / University", type: "text", required: true },
                     { id: "resume", label: "Resume (PDF) / Photo", type: "file", required: true }
                   ],
-                  image: ""
+                  image: "",
+                  customFields: []
                 });
                 setViewMode('create');
                 setStep(1);
@@ -515,7 +593,8 @@ export default function HostHackathon() {
                           theme: selectedHack.tags[0] || "",
                           tags: selectedHack.tags,
                           requirements: selectedHack.requirements || [],
-                          image: selectedHack.image || ""
+                          image: selectedHack.image || "",
+                          customFields: selectedHack.customFields || []
                         });
                         setEditingHackId(selectedHack.id);
                         setViewMode('create');
@@ -721,6 +800,22 @@ export default function HostHackathon() {
                         </div>
                       ))}
                     </div>
+                    {selectedHack.customFields && selectedHack.customFields.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {selectedHack.customFields.map((field) => (
+                          <div key={field.id} className="p-3.5 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                            <span className="text-white/40 text-xs block mb-0.5">{field.label}</span>
+                            {field.type === "file" && field.value ? (
+                              <a href={field.value} target="_blank" rel="noopener noreferrer" className="text-hack-primary text-xs hover:underline truncate block">
+                                {field.value}
+                              </a>
+                            ) : (
+                              <span className="text-white font-500 break-words">{field.value || "N/A"}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {selectedHack.image && (
                       <div className="p-3.5 rounded-xl text-left" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
                         <span className="text-white/40 text-xs block mb-2">Cover Photo URL</span>
@@ -871,6 +966,108 @@ export default function HostHackathon() {
                       <Plus size={14} />
                     </button>
                   </div>
+                </div>
+
+                {/* Basic Info Custom Fields List */}
+                {form.customFields && form.customFields.length > 0 && (
+                  <div className="space-y-4 mt-6">
+                    <label className="block text-white/60 text-sm font-500">Custom Basic Info Field Values</label>
+                    {form.customFields.map((req) => (
+                      <div key={req.id} className="relative">
+                        <label className="block text-white/60 text-sm font-500 mb-2">
+                          {req.label} {req.required && "*"}
+                          <span className="text-white/30 text-[10px] ml-2 font-mono uppercase">({req.type})</span>
+                        </label>
+                        <div className="flex gap-2">
+                          {req.type === "textarea" ? (
+                            <textarea
+                              value={req.value || ""}
+                              onChange={(e) => {
+                                const updated = form.customFields.map((f) =>
+                                  f.id === req.id ? { ...f, value: e.target.value } : f
+                                );
+                                update("customFields", updated);
+                              }}
+                              placeholder={`Enter ${req.label}...`}
+                              className="hack-input resize-none text-sm leading-relaxed flex-1"
+                              rows={3}
+                            />
+                          ) : (
+                            <input
+                              type={req.type === "file" ? "text" : req.type}
+                              value={req.value || ""}
+                              onChange={(e) => {
+                                const updated = form.customFields.map((f) =>
+                                  f.id === req.id ? { ...f, value: e.target.value } : f
+                                );
+                                update("customFields", updated);
+                              }}
+                              placeholder={req.type === "file" ? "e.g., https://example.com/file" : `Enter ${req.label}...`}
+                              className="hack-input flex-1"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => update("customFields", form.customFields.filter((r) => r.id !== req.id))}
+                            className="text-white/30 hover:text-hack-red transition-colors px-2"
+                            title="Remove field"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Basic Info Custom Field Builder */}
+                <div className="p-5 rounded-2xl space-y-4 bg-white/3 border border-white/6 mt-6">
+                  <h3 className="text-white font-600 text-sm">Add a Custom Field</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-white/60 text-xs mb-1.5">Field Name / Label</label>
+                      <input
+                        type="text"
+                        value={newBasicFieldName}
+                        onChange={(e) => setNewBasicFieldName(e.target.value)}
+                        placeholder="e.g., Twitter Community Link, Discord Invite Code"
+                        className="hack-input py-2.5 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/60 text-xs mb-1.5">Input Field Type</label>
+                      <select
+                        value={newBasicFieldType}
+                        onChange={(e) => setNewBasicFieldType(e.target.value as any)}
+                        className="hack-input py-2.5 text-xs"
+                      >
+                        <option value="text" style={{ background: "#131826" }}>Text Field</option>
+                        <option value="number" style={{ background: "#131826" }}>Number</option>
+                        <option value="email" style={{ background: "#131826" }}>Email Address</option>
+                        <option value="textarea" style={{ background: "#131826" }}>Paragraph Text</option>
+                        <option value="file" style={{ background: "#131826" }}>Photo / File Upload</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      id="requiredBasicCheck"
+                      checked={newBasicFieldRequired}
+                      onChange={(e) => setNewBasicFieldRequired(e.target.checked)}
+                      className="rounded border-white/20 bg-transparent text-hack-primary focus:ring-0"
+                    />
+                    <label htmlFor="requiredBasicCheck" className="text-white/60 text-xs cursor-pointer">
+                      Is this field required?
+                    </label>
+                  </div>
+                  <button
+                    onClick={addBasicCustomField}
+                    className="hack-btn-secondary w-full justify-center text-xs py-2"
+                  >
+                    <Plus size={13} />
+                    Add Field
+                  </button>
                 </div>
               </div>
             )}

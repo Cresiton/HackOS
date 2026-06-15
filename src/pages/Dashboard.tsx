@@ -91,7 +91,8 @@ export default function Dashboard() {
         const { count: invitesCount } = await supabase
           .from("team_requests")
           .select("*", { count: "exact", head: true })
-          .eq("user_id", user.id)
+          .eq("receiver_id", user.id)
+          .eq("request_type", "invite")
           .eq("status", "pending");
 
         const { count: myTeamsCount } = await supabase
@@ -563,7 +564,7 @@ export default function Dashboard() {
               ))}
 
               {/* Create Team CTA */}
-              <Link to="/my-teams" className="block">
+              <Link to="/create-team" className="block">
                 <div
                   className="hack-card p-4 flex flex-col items-center justify-center text-center h-full min-h-[140px] border-dashed cursor-pointer"
                   style={{ borderColor: "rgba(124,92,255,0.2)" }}
@@ -673,7 +674,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <Link to="/my-requests">
+          <Link to="/create-team">
             <button className="hack-btn-secondary w-full justify-center mt-3 py-2.5 text-sm">
               <Plus size={14} />
               Create Team Request

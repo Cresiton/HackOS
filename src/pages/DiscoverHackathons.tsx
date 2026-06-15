@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import HackathonRegistrationModal from "@/components/features/HackathonRegistrationModal";
-import { Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Search, Bookmark, Share2, Clock, Users,
-  Trophy, Grid, List
+  Trophy, Grid, List, Calendar
 } from "lucide-react";
 import { Hackathon } from "@/types";
 import { supabase } from "@/lib/supabase";
@@ -15,8 +15,9 @@ const FILTERS = {
   prize: ["All", "Under ₹50K", "₹50K-₹1L", "₹1L-₹5L", "₹5L+"],
 };
 
-function HackathonCard({ hack, onRegister }: { hack: Hackathon; onRegister: (e: React.MouseEvent) => void }) {
+function HackathonCard({ hack }: { hack: Hackathon }) {
   const [bookmarked, setBookmarked] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <Link to={`/hackathon/${hack.id}`} className="block">
@@ -26,10 +27,13 @@ function HackathonCard({ hack, onRegister }: { hack: Hackathon; onRegister: (e: 
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
           {/* Badges */}
-          <div className="absolute top-3 left-3 flex gap-2">
+          <div className="absolute top-3 left-3 flex gap-2 flex-wrap items-center">
             {hack.featured && <span className="featured-tag">Featured</span>}
             <span className={`tag ${hack.mode === "Online" ? "online-tag" : hack.mode === "Offline" ? "offline-tag" : ""}`}>
               {hack.mode}
+            </span>
+            <span className="text-xs font-500 px-2.5 py-1 rounded-lg bg-hack-primary/20 text-[#A78BFF] border border-hack-primary/30">
+              {hack.category || "General"}
             </span>
           </div>
 
@@ -68,20 +72,26 @@ function HackathonCard({ hack, onRegister }: { hack: Hackathon; onRegister: (e: 
           )}
         </div>
 
-        <div className="p-5">
-          <div className="flex items-start justify-between mb-2">
+        <div className="p-5 space-y-3">
+          <div>
             <h3 className="text-white font-700 text-base leading-snug flex-1 pr-2">{hack.title}</h3>
+            <span className="text-white/40 text-xs">by {hack.organizer}</span>
           </div>
-          <p className="text-white/40 text-xs leading-relaxed mb-3 line-clamp-2">{hack.description}</p>
 
-          <div className="flex items-center gap-2 text-white/40 text-xs mb-3">
-            <div className="flex items-center gap-1">
-              <Users size={11} />
-              <span>{hack.organizer}</span>
+          <p className="text-white/40 text-xs leading-relaxed line-clamp-2">{hack.description}</p>
+
+          <div className="grid grid-cols-2 gap-2 text-white/50 text-xs bg-white/2 p-2.5 rounded-xl border border-white/5">
+            <div className="flex items-center gap-1.5">
+              <Users size={12} className="text-hack-primary" />
+              <span>Size: {hack.teamSize || "2-4"}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Calendar size={12} className="text-hack-orange" />
+              <span className="truncate">Deadline: {hack.registrationDeadline}</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-1.5 mb-4">
+          <div className="flex flex-wrap gap-1.5">
             {hack.tags.map((tag) => (
               <span key={tag} className="tag">{tag}</span>
             ))}
@@ -105,10 +115,14 @@ function HackathonCard({ hack, onRegister }: { hack: Hackathon; onRegister: (e: 
           </div>
 
           <button
-            className="hack-btn-primary w-full justify-center mt-4 py-2.5"
-            onClick={onRegister}
+            className="hack-btn-primary w-full justify-center py-2.5"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              navigate(`/register-hackathon/${hack.id}`);
+            }}
           >
-            Register Now
+            Register
           </button>
         </div>
       </div>
@@ -121,14 +135,7 @@ export default function DiscoverHackathons() {
   const [modeFilter, setModeFilter] = useState("All");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [selectedHack, setSelectedHack] = useState<Hackathon | null>(null);
-  const [registrationOpen, setRegistrationOpen] = useState(false);
-
-  const openRegistration = (e: React.MouseEvent, hack: Hackathon) => {
-    e.preventDefault();
-    setSelectedHack(hack);
-    setRegistrationOpen(true);
-  };
+  const [selectedCategory, setSelectedCategory] = useState("All Hackathons");
 
   const [dbHackathons, setDbHackathons] = useState<Hackathon[]>([]);
 
@@ -156,7 +163,8 @@ export default function DiscoverHackathons() {
       h.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
     const matchMode = modeFilter === "All" || h.mode === modeFilter;
     const matchDiff = difficultyFilter === "All" || h.difficulty === difficultyFilter;
-    return matchSearch && matchMode && matchDiff;
+    const matchCat = selectedCategory === "All Hackathons" || h.category === selectedCategory;
+    return matchSearch && matchMode && matchDiff && matchCat;
   });
 
   return (
@@ -214,19 +222,23 @@ export default function DiscoverHackathons() {
 
       {/* Category Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide">
-        {["All Hackathons", "AI & ML", "Web Dev", "Mobile", "Blockchain", "Sustainability", "HealthTech", "FinTech"].map((cat) => (
-          <button
-            key={cat}
-            className="px-4 py-2 rounded-xl text-sm font-500 whitespace-nowrap transition-all flex-shrink-0"
-            style={{
-              background: cat === "All Hackathons" ? "rgba(124,92,255,0.15)" : "rgba(255,255,255,0.04)",
-              color: cat === "All Hackathons" ? "#A78BFF" : "rgba(255,255,255,0.45)",
-              border: `1px solid ${cat === "All Hackathons" ? "rgba(124,92,255,0.25)" : "rgba(255,255,255,0.07)"}`,
-            }}
-          >
-            {cat}
-          </button>
-        ))}
+        {["All Hackathons", "AI & ML", "Web Dev", "Mobile", "Blockchain", "Sustainability", "HealthTech", "FinTech"].map((cat) => {
+          const isActive = selectedCategory === cat;
+          return (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className="px-4 py-2 rounded-xl text-sm font-500 whitespace-nowrap transition-all flex-shrink-0"
+              style={{
+                background: isActive ? "rgba(124,92,255,0.15)" : "rgba(255,255,255,0.04)",
+                color: isActive ? "#A78BFF" : "rgba(255,255,255,0.45)",
+                border: `1px solid ${isActive ? "rgba(124,92,255,0.25)" : "rgba(255,255,255,0.07)"}`,
+              }}
+            >
+              {cat}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results Count */}
@@ -251,19 +263,9 @@ export default function DiscoverHackathons() {
           <HackathonCard
             key={hack.id}
             hack={hack}
-            onRegister={(e) => openRegistration(e, hack)}
           />
         ))}
       </div>
-
-      {selectedHack && (
-        <HackathonRegistrationModal
-          hack={selectedHack}
-          isOpen={registrationOpen}
-          onClose={() => { setRegistrationOpen(false); setSelectedHack(null); }}
-          customFields={selectedHack.requirements}
-        />
-      )}
 
       {filtered.length === 0 && (
         <div className="text-center py-20">

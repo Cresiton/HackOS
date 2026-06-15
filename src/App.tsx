@@ -17,8 +17,11 @@ import AITeamBuilder from "@/pages/AITeamBuilder";
 import HostHackathon from "@/pages/HostHackathon";
 import HackathonDetail from "@/pages/HackathonDetail";
 import NotFound from "@/pages/NotFound";
+import CreateTeamWizard from "@/pages/CreateTeamWizard";
+import DiscoverTeams from "@/pages/DiscoverTeams";
 import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
 import SettingsPage from "@/pages/SettingsPage";
+import RegisterHackathon from "@/pages/RegisterHackathon";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -82,7 +85,10 @@ export default function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/discover" element={<DiscoverHackathons />} />
             <Route path="/hackathon/:id" element={<HackathonDetail />} />
+            <Route path="/register-hackathon/:id" element={<RegisterHackathon />} />
             <Route path="/my-teams" element={<MyTeams />} />
+            <Route path="/create-team" element={<CreateTeamWizard />} />
+            <Route path="/discover-teams" element={<DiscoverTeams />} />
             <Route path="/my-requests" element={<MyRequests />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/notifications" element={<NotificationsPage />} />

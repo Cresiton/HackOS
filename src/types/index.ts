@@ -56,6 +56,12 @@ export interface Hackathon {
   teamSize?: string;
   status: 'open' | 'closed' | 'upcoming';
   requirements?: any[];
+  external?: boolean;
+  eventLink?: string;
+  category?: string;
+  team_size_min?: number;
+  team_size_max?: number;
+  customFields?: any[];
 }
 
 export interface Team {
@@ -133,6 +139,11 @@ export interface Teammate {
   isOnline: boolean;
   avatar?: string;
   college?: string;
+  email?: string;
+  github_username?: string;
+  github_connected?: boolean;
+  linkedin_connected?: boolean;
+  linkedin_url?: string;
 }
 
 export interface GitHubStats {
