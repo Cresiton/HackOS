@@ -4,7 +4,6 @@ import {
   ArrowRight, Users, Zap, Trophy, Shield, Star, Activity,
   CheckCircle, Github, Linkedin, ChevronRight
 } from "lucide-react";
-import heroIllustration from "@/assets/hero-illustration.png";
 
 const FEATURES = [
   {
@@ -186,10 +185,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Hero Illustration */}
-        <div className="absolute right-0 bottom-0 w-1/2 opacity-30 pointer-events-none">
-          <img src={heroIllustration} alt="HackOS Platform" className="w-full object-cover" />
-        </div>
+
 
         {/* Footer */}
         <div className="relative flex items-center gap-6 text-xs text-white/25">
