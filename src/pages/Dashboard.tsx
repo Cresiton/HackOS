@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ChevronRight, Calendar, Users, Compass, MapPin, Star,
   ArrowRight, Plus, ExternalLink, Activity, Clock, TrendingUp,
@@ -8,13 +8,29 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { getTimeGreeting } from "@/lib/auth";
 import { MOTIVATIONAL_QUOTES } from "@/constants";
-import aiRobot from "@/assets/ai-robot.png";
+import aiTeamBuilderLogo from "@/assets/ai-team-builder-logo.png";
 import organizerIllustration from "@/assets/organizer-illustration.png";
+import aiJuryLogo from "@/assets/ai-jury-logo.png";
+import { AIJuryProvider } from "@/contexts/AIJuryContext";
+import { AIJuryModal } from "@/components/ai-jury/AIJuryModal";
 import { supabase } from "@/lib/supabase";
 import { deserializeHackathon } from "@/lib/utils";
 import { Hackathon } from "@/types";
-
 import { Teammate, Team, TeamRequest } from "@/types";
+import { rankCandidates, SearchMode } from "@/lib/searchRankingEngine";
+
+// Helper function to calculate distance in km using Haversine formula
+function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
+  return R * c; 
+}
 
 function MatchScoreRing({ score, size = 44 }: { score: number; size?: number }) {
   const radius = (size - 8) / 2;
@@ -42,11 +58,15 @@ function MatchScoreRing({ score, size = 44 }: { score: number; size?: number }) 
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [isAIJuryModalOpen, setIsAIJuryModalOpen] = useState(false);
   const greeting = getTimeGreeting();
   const quote = MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
   const [roleFilter, setRoleFilter] = useState("All Roles");
-  const [locationFilter, setLocationFilter] = useState("All Locations");
+  const [locationTextFilter, setLocationTextFilter] = useState("");
+  const [distanceRadius, setDistanceRadius] = useState<number>(0); // 0 means no radius filter
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<SearchMode>("AI Recommended");
   const [dbHackathons, setDbHackathons] = useState<Hackathon[]>([]);
   const [dbTeammates, setDbTeammates] = useState<Teammate[]>([]);
   const [dbMyTeams, setDbMyTeams] = useState<Team[]>([]);
@@ -112,12 +132,12 @@ export default function Dashboard() {
           { label: "Available Hackathons", value: String(availableCount || 0), icon: Compass, color: "#F59E0B", iconBg: "rgba(245,158,11,0.15)" },
         ]);
 
-        // 2. Fetch Teammates/Profiles
+        // 2. Fetch Teammates/Profiles (Increased limit for ranking engine)
         const { data: profiles } = await supabase
           .from("profiles")
           .select("*")
           .neq("id", user.id)
-          .limit(10);
+          .limit(100);
 
         if (profiles) {
           const { data: skillsData } = await supabase
@@ -139,18 +159,22 @@ export default function Dashboard() {
 
           const formattedTeammates = profiles.map((p: any, idx: number) => {
             const skills = userSkillsMap[p.id] || [];
-            let score = 80 + (idx * 3) % 19;
             return {
-              id: p.id,
-              name: p.name,
-              role: p.role || "Full Stack Developer",
-              location: p.location || "Online",
-              skills: skills,
-              rating: Number(p.rating) || 5.0,
-              matchScore: score,
-              isOnline: true,
+            id: p.id,
+            name: p.name,
+            role: p.role || "Full Stack Developer",
+            location: p.location || "Online",
+            latitude: p.latitude,
+            longitude: p.longitude,
+            skills: skills,
+            rating: Number(p.rating) || 5.0,
+            isOnline: false,
               avatar: p.linkedin_avatar || p.github_avatar || p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}`,
-              college: p.college || ""
+              college: p.college || "",
+              trustScore: p.trust_score || 50,
+              availability: p.availability || "available",
+              github_connected: p.github_connected,
+              github_username: p.github_username
             };
           });
           setDbTeammates(formattedTeammates);
@@ -275,8 +299,20 @@ export default function Dashboard() {
 
   const filteredTeammates = dbTeammates.filter(t => {
     if (roleFilter !== "All Roles" && t.role !== roleFilter) return false;
-    if (locationFilter !== "All Locations" && !t.location.toLowerCase().includes(locationFilter.toLowerCase())) return false;
-    if (searchQuery.trim()) {
+    
+    if (locationTextFilter.trim()) {
+      if (!t.location.toLowerCase().includes(locationTextFilter.toLowerCase())) return false;
+    }
+    
+    const uLat = user?.latitude || 13.0827;
+    const uLon = user?.longitude || 80.2707;
+    if (distanceRadius > 0) {
+      if (!t.latitude || !t.longitude) return false; // Exclude users with unknown locations if radius is applied
+      const distance = getDistanceFromLatLonInKm(uLat, uLon, t.latitude, t.longitude);
+      if (distance > distanceRadius) return false;
+    }
+
+    if (searchQuery.trim() && searchMode === "All") {
       const q = searchQuery.toLowerCase();
       const roleMatch = t.role.toLowerCase().includes(q);
       const skillMatch = t.skills.some(s => s.toLowerCase().includes(q));
@@ -286,11 +322,14 @@ export default function Dashboard() {
     return true;
   });
 
+  const rankedTeammates = rankCandidates(filteredTeammates, searchQuery, searchMode, user).slice(0, 10);
+
   const allFeaturedHackathons = dbHackathons.slice(0, 4);
 
   return (
-    <div className="flex h-full">
-      {/* Main Content */}
+    <AIJuryProvider>
+      <div className="flex h-full">
+        {/* Main Content */}
       <div className="flex-1 overflow-y-auto min-w-0">
         <div className="p-6 lg:p-8 space-y-8">
           {/* Hero Greeting */}
@@ -425,29 +464,64 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-white font-700 text-lg">Find Your Perfect Teammates</h2>
-              <button className="text-hack-primary text-sm hover:text-hack-primary-hover">View all</button>
+              <Link to="/match" className="text-hack-primary text-sm hover:text-hack-primary-hover">View all</Link>
             </div>
 
             {/* Filters */}
-            <div className="flex gap-3 mb-4 flex-wrap">
-              {[
-                { value: roleFilter, options: ["All Roles", "Frontend Developer", "Backend Developer", "ML Engineer", "UI/UX Designer"], setter: setRoleFilter },
-                { value: "Online", options: ["Online", "Offline", "Hybrid"], setter: () => {} },
-                { value: locationFilter, options: ["All Locations", "Bangalore", "Mumbai", "Delhi", "Chennai"], setter: setLocationFilter },
-              ].map((filter, i) => (
-                <select
-                  key={i}
-                  value={filter.value}
-                  onChange={(e) => filter.setter(e.target.value)}
-                  className="hack-input py-2 px-3 w-auto text-xs cursor-pointer"
-                  style={{ borderRadius: "10px" }}
-                >
-                  {filter.options.map((opt) => (
-                    <option key={opt} value={opt} style={{ background: "#131826" }}>{opt}</option>
-                  ))}
-                </select>
-              ))}
-              <div className="relative flex-1 min-w-40">
+            <div className="flex gap-3 mb-4 flex-wrap items-center">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="hack-input py-2 px-3 w-auto text-xs cursor-pointer"
+                style={{ borderRadius: "10px" }}
+              >
+                {["All Roles", "Frontend Developer", "Backend Developer", "ML Engineer", "UI/UX Designer"].map((opt) => (
+                  <option key={opt} value={opt} style={{ background: "#131826" }}>{opt}</option>
+                ))}
+              </select>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  value={locationTextFilter}
+                  onChange={(e) => setLocationTextFilter(e.target.value)}
+                  placeholder="Filter by city..."
+                  className="hack-input py-2 text-xs"
+                  style={{ borderRadius: "10px", width: "140px" }}
+                />
+              </div>
+
+              {true && (
+                <div className="flex flex-col gap-1 ml-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/40 text-[10px] font-600 uppercase tracking-widest">Radius</span>
+                    <span className="text-hack-primary text-[10px] font-700">{distanceRadius > 0 ? `${distanceRadius} km` : "Any"}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="500"
+                    step="10"
+                    value={distanceRadius}
+                    onChange={(e) => setDistanceRadius(Number(e.target.value))}
+                    className="w-32 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                    style={{ accentColor: "#7C5CFF" }}
+                  />
+                </div>
+              )}
+
+              <select
+                value={searchMode}
+                onChange={(e) => setSearchMode(e.target.value as SearchMode)}
+                className="hack-input py-2 px-3 w-auto text-xs cursor-pointer ml-auto"
+                style={{ borderRadius: "10px", borderColor: searchMode === "AI Recommended" ? "#7C5CFF" : undefined }}
+              >
+                <option value="All" style={{ background: "#131826" }}>All Mode</option>
+                <option value="Priority" style={{ background: "#131826" }}>Priority Mode</option>
+                <option value="AI Recommended" style={{ background: "#131826" }}>✨ AI Recommended</option>
+              </select>
+
+              <div className="relative flex-1 min-w-40 max-w-xs">
                 <input
                   type="text"
                   value={searchQuery}
@@ -460,26 +534,28 @@ export default function Dashboard() {
             </div>
 
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
-              {filteredTeammates.map((teammate) => (
+              {rankedTeammates.map((teammate) => (
                 <div key={teammate.id} className="hack-card p-4 flex-shrink-0 w-52">
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-hack-primary/20">
-                        <img src={teammate.avatar} alt={teammate.name} className="w-full h-full" />
+                      <div 
+                        onClick={() => navigate(`/profile/${teammate.id}`)}
+                        className="w-12 h-12 rounded-full overflow-hidden bg-hack-primary/20 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+                      >
+                        <img src={teammate.avatar} alt={teammate.name} className="w-full h-full object-cover" />
                       </div>
-                      {teammate.isOnline && (
-                        <div
-                          className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
-                          style={{ background: "#22C55E", borderColor: "#131826" }}
-                        />
-                      )}
                     </div>
                     <div className="flex items-center gap-1 text-yellow-400 text-xs">
                       <Star size={10} fill="currentColor" />
                       <span>{teammate.rating}</span>
                     </div>
                   </div>
-                  <div className="text-white font-600 text-sm mb-0.5">{teammate.name}</div>
+                  <div 
+                    onClick={() => navigate(`/profile/${teammate.id}`)}
+                    className="text-white font-600 text-sm mb-0.5 cursor-pointer hover:text-hack-primary transition-colors"
+                  >
+                    {teammate.name}
+                  </div>
                   <div className="text-white/40 text-xs mb-2">{teammate.role}</div>
                   <div className="flex items-center gap-1 text-white/30 text-xs mb-3">
                     <MapPin size={10} />
@@ -490,12 +566,14 @@ export default function Dashboard() {
                       <span key={skill} className="skill-tag">{skill}</span>
                     ))}
                   </div>
-                  <div
-                    className="text-center text-xs font-600 py-1.5 rounded-lg"
-                    style={{ background: "rgba(34,197,94,0.1)", color: "#22C55E" }}
-                  >
-                    {teammate.matchScore}% Match
-                  </div>
+                  
+                  {teammate.explanation && searchMode !== "All" && (
+                    <div className="text-[10px] font-600 px-2 py-1 mb-3 rounded border border-hack-primary/30 text-hack-primary/90 bg-hack-primary/5 line-clamp-1 text-center">
+                      ✨ {teammate.explanation}
+                    </div>
+                  )}
+
+                  {/* Removed Dummy Match Score */}
                 </div>
               ))}
 
@@ -535,10 +613,15 @@ export default function Dashboard() {
                       {team.members.slice(0, 3).map((m) => (
                         <div
                           key={m.id}
-                          className="w-6 h-6 rounded-full overflow-hidden border border-hack-card"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/profile/${m.id}`);
+                          }}
+                          className="w-6 h-6 rounded-full overflow-hidden border border-hack-card cursor-pointer hover:ring-2 hover:ring-hack-primary z-10 relative"
                           style={{ background: "#7C5CFF33" }}
+                          title={m.name}
                         >
-                          <img src={m.avatar} alt={m.name} className="w-full h-full" />
+                          <img src={m.avatar} alt={m.name} className="w-full h-full object-cover" />
                         </div>
                       ))}
                       {team.members.length < team.maxMembers && (
@@ -555,6 +638,7 @@ export default function Dashboard() {
                         <span className="text-white/40">Progress</span>
                         <span className="text-white/60">{team.progress}%</span>
                       </div>
+                      {/* Removed Dummy Match Score */}
                       <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${team.progress}%` }} />
                       </div>
@@ -585,12 +669,12 @@ export default function Dashboard() {
       </div>
 
       <div
-        className="w-80 flex-shrink-0 overflow-y-auto p-5 space-y-5 hidden xl:block"
+        className="w-80 flex-shrink-0 overflow-y-auto p-4 space-y-4 hidden xl:block"
         style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}
       >
         {/* HackOS Match Feature */}
         <div
-          className="rounded-2xl p-5 relative overflow-hidden"
+          className="rounded-2xl p-4 relative overflow-hidden"
           style={{
             background: "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(19,24,38,0.9))",
             border: "1px solid rgba(34,197,94,0.2)",
@@ -600,11 +684,11 @@ export default function Dashboard() {
             <h3 className="text-white font-700">HackOS Match</h3>
             <span className="badge-new bg-green-500/20 text-green-400 border-green-500/30">New</span>
           </div>
-          <p className="text-white/50 text-xs mb-4 leading-relaxed">
+          <p className="text-white/50 text-xs mb-3 leading-relaxed">
             Discover and recruit amazing developers with our new swipe-based matching experience.
           </p>
           <Link to="/match">
-            <button className="hack-btn-primary w-full justify-center py-2.5" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
+            <button className="hack-btn-primary w-full justify-center py-2" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
               Find Teammates
               <ArrowRight size={14} />
             </button>
@@ -613,7 +697,7 @@ export default function Dashboard() {
 
         {/* AI Team Builder */}
         <div
-          className="rounded-2xl p-5 relative overflow-hidden"
+          className="rounded-2xl p-4 relative overflow-hidden"
           style={{
             background: "linear-gradient(135deg, #0E111B, #131826)",
             border: "1px solid rgba(255,255,255,0.07)",
@@ -623,18 +707,39 @@ export default function Dashboard() {
             <h3 className="text-white font-700">AI Team Builder</h3>
             <span className="badge-new">New</span>
           </div>
-          <div className="flex justify-center my-4">
-            <img src={aiRobot} alt="AI Robot" className="w-28 h-28 object-contain animate-float" />
+          <div className="flex justify-center my-3">
+            <img src={aiTeamBuilderLogo} alt="AI Team Builder Logo" className="w-24 h-24 object-contain animate-float" />
           </div>
-          <p className="text-white/40 text-xs text-center mb-4 leading-relaxed">
+          <p className="text-white/40 text-xs text-center mb-3 leading-relaxed">
             Paste your idea or problem statement and let AI suggest the perfect team roles.
           </p>
           <Link to="/ai-team-builder">
-            <button className="hack-btn-primary w-full justify-center py-2.5">
+            <button className="hack-btn-primary w-full justify-center py-2">
               Try AI Team Builder
               <ArrowRight size={14} />
             </button>
           </Link>
+        </div>
+
+        {/* AI Jury */}
+        <div
+          className="rounded-2xl p-4 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #0E111B, #131826)",
+            border: "1px solid rgba(255,255,255,0.07)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-700">AI Jury</h3>
+            <span className="badge-new">New</span>
+          </div>
+          <div className="flex justify-center my-3">
+            <img src={aiJuryLogo} alt="AI Jury Logo" className="w-24 h-24 object-contain animate-float" />
+          </div>
+          <button onClick={() => setIsAIJuryModalOpen(true)} className="hack-btn-primary w-full justify-center py-2">
+            Evaluate with AI Jury
+            <ArrowRight size={14} />
+          </button>
         </div>
 
         {/* Live Team Requests */}
@@ -727,5 +832,7 @@ export default function Dashboard() {
         </Link>
       </div>
     </div>
+      <AIJuryModal isOpen={isAIJuryModalOpen} onClose={() => setIsAIJuryModalOpen(false)} />
+    </AIJuryProvider>
   );
 }

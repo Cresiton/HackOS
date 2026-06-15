@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Bell, Users, Trophy, User, MessageSquare, AlertTriangle,
   CheckCheck, Trash2, Filter, ArrowRight, ChevronRight
@@ -24,6 +25,7 @@ const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
 
 export default function NotificationsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeFilter, setActiveFilter] = useState<"all" | "unread">("all");
   const [loading, setLoading] = useState(true);
@@ -245,7 +247,14 @@ export default function NotificationsPage() {
                   <span className="text-white/25 text-[10px]">{notif.timestamp}</span>
                   {notif.actionLabel && (
                     <button
-                      className="text-xs font-600 flex items-center gap-1 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markRead(notif.id);
+                        if (notif.actionUrl) {
+                          navigate(notif.actionUrl);
+                        }
+                      }}
+                      className="text-xs font-600 flex items-center gap-1 hover:underline transition-colors"
                       style={{ color: config.color }}
                     >
                       {notif.actionLabel}

@@ -2,7 +2,6 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "@/components/layout/Sidebar";
 import TopNav from "@/components/layout/TopNav";
 import { useState } from "react";
-import { AIJuryFloatingButton } from "@/components/ai-jury/AIJuryFloatingButton";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -23,9 +22,6 @@ export default function AppLayout() {
             <Outlet />
           </div>
         </main>
-        
-        {/* Global AI Jury Button */}
-        <AIJuryFloatingButton />
       </div>
     </div>
   );

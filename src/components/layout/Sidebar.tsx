@@ -7,6 +7,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { APP_NAME, APP_TAGLINE } from "@/constants";
 import { cn } from "@/lib/utils";
+import hackosLogo from "@/assets/hackos-logo.png";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -52,12 +53,11 @@ export default function Sidebar({ isOpen }: SidebarProps) {
         className="flex items-center gap-3 px-6 py-5"
         style={{ borderBottom: "1px solid var(--hack-divider)" }}
       >
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #7C5CFF, #4F7CFF)" }}
-        >
-          H
-        </div>
+        <img 
+          src={hackosLogo} 
+          alt="HackOS Logo" 
+          className="w-8 h-8 object-contain flex-shrink-0"
+        />
         <div>
           <div className="font-bold text-base leading-none" style={{ color: "var(--hack-text)" }}>{APP_NAME}</div>
           <div className="text-[11px] mt-0.5" style={{ color: "var(--hack-text-dim)" }}>{APP_TAGLINE}</div>

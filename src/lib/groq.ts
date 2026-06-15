@@ -49,13 +49,13 @@ export async function callGroq(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const status = response.status;
-      
+
       // Rate limit or quota exhausted - try next key
       if (status === 429 || status === 402 || status === 401) {
         console.warn(`Groq key ${retries + 1} failed (${status}), trying next key...`);
         return callGroq(messages, retries + 1);
       }
-      
+
       throw new Error(`Groq API error: ${status} - ${JSON.stringify(errorData)}`);
     }
 
@@ -116,7 +116,7 @@ Suggest exactly ${teamSize} roles (mix required and optional). Be specific and p
   ];
 
   const response = await callGroq(messages);
-  
+
   try {
     // Extract JSON from response
     const jsonMatch = response.match(/\{[\s\S]*\}/);

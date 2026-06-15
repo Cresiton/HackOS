@@ -140,6 +140,7 @@ function RoleCard({
   candidates: Teammate[];
   onInvite: (name: string) => void;
 }) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
 
   const roleColors: Record<string, { bg: string; border: string; accent: string }> = {
@@ -232,11 +233,19 @@ function RoleCard({
               className="flex items-center gap-3 p-2.5 rounded-xl transition-all"
               style={{ background: "rgba(255,255,255,0.03)" }}
             >
-              <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-hack-primary/20">
-                <img src={candidate.avatar} alt={candidate.name} className="w-full h-full" />
+              <div 
+                onClick={() => navigate(`/profile/${candidate.id}`)}
+                className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-hack-primary/20 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+              >
+                <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-white font-600 text-xs">{candidate.name}</div>
+                <div 
+                  onClick={() => navigate(`/profile/${candidate.id}`)}
+                  className="text-white font-600 text-xs cursor-pointer hover:text-hack-primary transition-colors"
+                >
+                  {candidate.name}
+                </div>
                 <div className="text-white/40 text-[10px]">{candidate.location}</div>
               </div>
               <div className="flex items-center gap-2">

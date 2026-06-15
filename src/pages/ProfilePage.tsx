@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Linkedin, MapPin, Star, Shield, Edit2, Plus,
   ExternalLink, Award, Code, Briefcase, GraduationCap, Github,
-  FileText, Upload, Loader2, RefreshCw, Trash2, Sparkles, Camera
+  FileText, Upload, Loader2, RefreshCw, Trash2, Sparkles, Camera, Globe
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -153,6 +153,47 @@ export default function ProfilePage() {
   const [localName, setLocalName] = useState(user?.name || "");
   const [localRole, setLocalRole] = useState(user?.role || "");
   const [localLocation, setLocalLocation] = useState(user?.location || "");
+  const [localLatitude, setLocalLatitude] = useState<number | undefined>(user?.latitude);
+  const [localLongitude, setLocalLongitude] = useState<number | undefined>(user?.longitude);
+  const [detectingLocation, setDetectingLocation] = useState(false);
+
+  const handleDetectLocation = () => {
+    setDetectingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      setDetectingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const geoData = await res.json();
+          const city = geoData.address.city || geoData.address.town || geoData.address.village || "";
+          const state = geoData.address.state || "";
+          const country = geoData.address.country || "";
+          const locStr = [city, state, country].filter(Boolean).join(", ");
+          
+          setLocalLocation(locStr);
+          setLocalLatitude(latitude);
+          setLocalLongitude(longitude);
+          toast.success("Location detected successfully!");
+        } catch (error) {
+          console.error(error);
+          toast.error("Failed to get location details from coordinates.");
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      (error) => {
+        console.error(error);
+        toast.error("Location access denied or unavailable.");
+        setDetectingLocation(false);
+      }
+    );
+  };
 
   // Bio and Photo Enhancements
   const [editingBio, setEditingBio] = useState(false);
@@ -432,6 +473,8 @@ export default function ProfilePage() {
       setLocalName(user?.name || "");
       setLocalRole(user?.role || "");
       setLocalLocation(user?.location || "");
+      setLocalLatitude(user?.latitude);
+      setLocalLongitude(user?.longitude);
       setTempBio(user.bio || "");
     }
   }, [user, editing]);
@@ -658,8 +701,10 @@ Strict Rules:
         updates.role = localRole?.trim();
       }
 
-      if (localLocation?.trim() !== user?.location) {
+      if (localLocation?.trim() !== user?.location || localLatitude !== user?.latitude || localLongitude !== user?.longitude) {
         updates.location = localLocation?.trim();
+        updates.latitude = localLatitude;
+        updates.longitude = localLongitude;
       }
 
       if (bio !== user?.bio) {
@@ -865,13 +910,23 @@ Strict Rules:
                   </div>
                   <div>
                     <label className="block text-white/40 text-[9px] mb-1 font-600 uppercase tracking-widest">Location</label>
-                    <input
-                      type="text"
-                      value={localLocation}
-                      onChange={(e) => setLocalLocation(e.target.value)}
-                      placeholder="e.g. Bangalore, India"
-                      className="bg-white/[0.02] border border-white/[0.08] rounded-xl px-3 py-1.5 text-white/70 text-xs focus:outline-none focus:border-[#7C5CFF] w-full"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={localLocation}
+                        onChange={(e) => setLocalLocation(e.target.value)}
+                        placeholder="e.g. Bangalore, India"
+                        className="bg-white/[0.02] border border-white/[0.08] rounded-xl px-3 py-1.5 text-white/70 text-xs focus:outline-none focus:border-[#7C5CFF] flex-1 min-w-0"
+                      />
+                      <button
+                        onClick={handleDetectLocation}
+                        disabled={detectingLocation}
+                        className="flex items-center gap-1 bg-[#7C5CFF]/10 text-[#7C5CFF] px-2 py-1.5 rounded-xl border border-[#7C5CFF]/20 hover:bg-[#7C5CFF]/20 transition-all text-[10px] font-600"
+                        title="Detect my location"
+                      >
+                        {detectingLocation ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (

@@ -6,6 +6,8 @@ export interface User {
   role: string;
   skills: string[];
   location: string;
+  latitude?: number;
+  longitude?: number;
   bio: string;
   github?: string;
   linkedin?: string;
@@ -133,6 +135,8 @@ export interface Teammate {
   name: string;
   role: string;
   location: string;
+  latitude?: number;
+  longitude?: number;
   skills: string[];
   rating: number;
   matchScore: number;
@@ -144,6 +148,8 @@ export interface Teammate {
   github_connected?: boolean;
   linkedin_connected?: boolean;
   linkedin_url?: string;
+  explanation?: string;
+  searchScore?: number;
 }
 
 export interface GitHubStats {

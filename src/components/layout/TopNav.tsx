@@ -1,11 +1,20 @@
 import { useState, useEffect } from "react";
-import { useNavigate, NavLink } from "react-router-dom";
+import { useNavigate, NavLink, useSearchParams, useLocation } from "react-router-dom";
 import {
   Search, Bell, MessageSquare, Plus, ChevronDown,
   Compass, Users, Settings, LogOut, User, Menu, Zap, Command
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+
+interface SearchResult {
+  id: string;
+  type: 'hackathon' | 'team' | 'user' | 'team_request' | 'message' | 'organizer';
+  title: string;
+  subtitle: string;
+  url: string;
+  icon: any;
+}
 
 interface TopNavProps {
   onToggleSidebar: () => void;
@@ -18,7 +27,161 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Sync with URL when navigating
+  useEffect(() => {
+    if (location.pathname === "/search") {
+      setSearchQuery(searchParams.get("q") || "");
+    } else {
+      setSearchQuery("");
+    }
+  }, [location.pathname, searchParams]);
+
+  useEffect(() => {
+    if (!debouncedQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    async function performSearch() {
+      setIsSearching(true);
+      const q = `%${debouncedQuery}%`;
+      const results: SearchResult[] = [];
+
+      try {
+        const [
+          { data: hackathons },
+          { data: profiles },
+          { data: skillsData },
+          { data: teams },
+          { data: teamRequests },
+          { data: messages }
+        ] = await Promise.all([
+          supabase.from("hackathons").select("id, title, mode, description").or(`title.ilike.${q},description.ilike.${q}`).limit(4),
+          supabase.from("profiles").select("id, name, role, bio").or(`name.ilike.${q},role.ilike.${q},bio.ilike.${q}`).limit(4),
+          supabase.from("user_skills").select("user_id, skills!inner(name)").ilike("skills.name", q).limit(10),
+          supabase.from("teams").select("id, name, category, status, description").or(`name.ilike.${q},description.ilike.${q},category.ilike.${q}`).limit(4),
+          supabase.from("team_requests").select("id, role, message, team_id, teams(name)").or(`role.ilike.${q},message.ilike.${q}`).limit(4),
+          (async () => {
+            if (!user) return { data: null };
+            const { data: convs } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", user.id);
+            const convIds = (convs || []).map((c: any) => c.conversation_id);
+            if (convIds.length === 0) return { data: [] };
+            return supabase.from("messages").select("id, content, conversation_id").in("conversation_id", convIds).ilike("content", q).limit(4);
+          })()
+        ]);
+
+        // Process Hackathons
+        if (hackathons) {
+          hackathons.forEach((h: any) => {
+            results.push({
+              id: `h-${h.id}`,
+              type: 'hackathon',
+              title: h.title,
+              subtitle: `Hackathon • ${h.mode || 'Online'}`,
+              url: `/hackathon/${h.id}`,
+              icon: Compass
+            });
+          });
+        }
+
+        // Process Profiles & Skills
+        const profileMap = new Map();
+        if (profiles) {
+          profiles.forEach((p: any) => profileMap.set(p.id, p));
+        }
+        
+        // Fetch profiles for users matched by skills but not already in the profile results
+        if (skillsData && skillsData.length > 0) {
+          const missingIds = skillsData.map((s: any) => s.user_id).filter((id: string) => !profileMap.has(id));
+          if (missingIds.length > 0) {
+            const { data: extraProfiles } = await supabase.from("profiles").select("id, name, role, bio").in("id", missingIds).limit(4);
+            if (extraProfiles) {
+              extraProfiles.forEach((p: any) => profileMap.set(p.id, p));
+            }
+          }
+        }
+
+        Array.from(profileMap.values()).slice(0, 5).forEach((p: any) => {
+          const isOrg = p.role?.toLowerCase().includes('organizer');
+          results.push({
+            id: `p-${p.id}`,
+            type: isOrg ? 'organizer' : 'user',
+            title: p.name,
+            subtitle: p.role || 'Developer',
+            url: `/profile/${p.id}`,
+            icon: User
+          });
+        });
+
+        // Process Teams
+        if (teams) {
+          teams.forEach((t: any) => {
+            const isReq = t.status === 'recruiting';
+            results.push({
+              id: `t-${t.id}`,
+              type: isReq ? 'team_request' : 'team',
+              title: t.name,
+              subtitle: isReq ? `Looking for members • ${t.category}` : `Team • ${t.category}`,
+              url: `/my-teams`,
+              icon: Users
+            });
+          });
+        }
+
+        // Process Team Requests
+        if (teamRequests) {
+          teamRequests.forEach((tr: any) => {
+            const teamName = tr.teams?.name || 'A team';
+            results.push({
+              id: `tr-${tr.id}`,
+              type: 'team_request',
+              title: `Request for ${teamName}`,
+              subtitle: tr.role ? `Role: ${tr.role}` : 'Team Request',
+              url: `/requests`,
+              icon: Plus
+            });
+          });
+        }
+
+        // Process Messages
+        if (messages?.data) {
+          messages.data.forEach((m: any) => {
+            results.push({
+              id: `m-${m.id}`,
+              type: 'message',
+              title: m.content.length > 40 ? m.content.substring(0, 40) + '...' : m.content,
+              subtitle: 'Message',
+              url: `/messages`,
+              icon: MessageSquare
+            });
+          });
+        }
+
+        setSearchResults(results);
+      } catch (e) {
+        console.error("Search error:", e);
+      } finally {
+        setIsSearching(false);
+      }
+    }
+
+    performSearch();
+  }, [debouncedQuery, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -128,42 +291,75 @@ export default function TopNav({ onToggleSidebar }: TopNavProps) {
 
       {/* Global Search */}
       <div className="relative flex-1 max-w-md">
-        <Search
-          size={15}
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30"
-        />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-          placeholder="Search hackathons, skills, people, teams..."
-          className="hack-input pl-10 pr-14 h-10 text-sm"
-          style={{ borderRadius: "12px" }}
-        />
-        <div
-          className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded-md"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          <Command size={9} className="text-white/30" />
-          <span className="text-white/30 text-[10px]">K</span>
-        </div>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (searchQuery.trim()) {
+            navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+            setSearchFocused(false);
+          }
+        }}>
+          <Search
+            size={15}
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+            placeholder="Search hackathons, skills, people, teams..."
+            className="hack-input pl-10 pr-14 h-10 text-sm w-full"
+            style={{ borderRadius: "12px" }}
+          />
+          <div
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded-md"
+            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+          >
+            <Command size={9} className="text-white/30" />
+            <span className="text-white/30 text-[10px]">K</span>
+          </div>
+        </form>
 
         {/* Search Dropdown */}
         {searchFocused && searchQuery && (
           <div
-            className="absolute top-full left-0 right-0 mt-2 rounded-2xl p-2 z-50"
+            className="absolute top-full left-0 right-0 mt-2 rounded-2xl p-2 z-50 max-h-96 overflow-y-auto"
             style={{ background: "var(--hack-card)", border: "1px solid var(--hack-border)", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}
           >
-            <div className="text-white/30 text-xs px-3 py-2">Search results for "{searchQuery}"</div>
-            {["AI Innovation Challenge", "Devansh Verma - Developer", "CodeCrafters Team"].map((result) => (
+            <div className="text-white/30 text-xs px-3 py-2">
+              {isSearching ? "Searching..." : `Search results for "${searchQuery}"`}
+            </div>
+            
+            {!isSearching && searchResults.length === 0 && (
+              <div className="px-3 py-4 text-center text-sm" style={{ color: "var(--hack-text-sub)" }}>
+                No results found.
+              </div>
+            )}
+
+            {!isSearching && searchResults.length > 0 && searchResults.map((result) => (
               <div
-                key={result}
-                className="px-3 py-2.5 rounded-xl cursor-pointer text-sm transition-colors"
-              style={{ color: "var(--hack-text-sub)" }}
+                key={result.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  navigate(result.url);
+                  setSearchFocused(false);
+                  setSearchQuery("");
+                }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors hover:bg-white/5 group"
               >
-                {result}
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/5 text-white/50 group-hover:bg-hack-primary/20 group-hover:text-hack-primary transition-colors">
+                  <result.icon size={14} />
+                </div>
+                <div className="flex-1 min-w-0 flex justify-between items-center">
+                  <div className="min-w-0 overflow-hidden pr-2">
+                    <div className="text-sm font-500 truncate" style={{ color: "var(--hack-text)" }}>{result.title}</div>
+                    <div className="text-xs truncate" style={{ color: "var(--hack-text-dim)" }}>{result.subtitle}</div>
+                  </div>
+                  <div className="text-[10px] uppercase font-600 px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" }}>
+                    {result.type.replace('_', ' ')}
+                  </div>
+                </div>
               </div>
             ))}
           </div>

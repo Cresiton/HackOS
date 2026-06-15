@@ -1,5 +1,6 @@
 import { MatchProfile } from "@/lib/matchService";
 import { ShieldCheck, MapPin, Github, GitCommit, Target, Zap, UserPlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface DeveloperCardProps {
   profile: MatchProfile;
@@ -9,6 +10,7 @@ interface DeveloperCardProps {
 }
 
 export default function DeveloperCard({ profile, onSave, onInvite, showInvite }: DeveloperCardProps) {
+  const navigate = useNavigate();
   return (
     <div className="w-full h-full bg-[#1A1F2C] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col relative select-none">
       {/* Header / Avatar Area */}
@@ -37,11 +39,14 @@ export default function DeveloperCard({ profile, onSave, onInvite, showInvite }:
           </button>
         </div>
         
-        <div className="absolute -bottom-12 left-6">
+        <div 
+          onClick={(e) => { e.stopPropagation(); navigate(`/profile/${profile.id}`); }}
+          className="absolute -bottom-12 left-6 cursor-pointer z-10 group"
+        >
           <img 
             src={profile.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`} 
             alt={profile.name} 
-            className="w-24 h-24 rounded-2xl border-4 border-[#1A1F2C] object-cover bg-[#22283A]"
+            className="w-24 h-24 rounded-2xl border-4 border-[#1A1F2C] object-cover bg-[#22283A] group-hover:border-hack-primary/50 transition-all"
           />
         </div>
       </div>
@@ -50,7 +55,12 @@ export default function DeveloperCard({ profile, onSave, onInvite, showInvite }:
       <div className="flex-1 p-6 pt-16 flex flex-col gap-4 overflow-y-auto no-scrollbar">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-2xl font-bold text-white">{profile.name}</h2>
+            <h2 
+              onClick={(e) => { e.stopPropagation(); navigate(`/profile/${profile.id}`); }}
+              className="text-2xl font-bold text-white cursor-pointer hover:text-hack-primary transition-colors"
+            >
+              {profile.name}
+            </h2>
             {profile.trustScore > 90 && (
               <ShieldCheck size={20} className="text-hack-primary" />
             )}

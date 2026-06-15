@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Building2, Calendar, MapPin, Trophy, Users, Upload,
-  ChevronRight, Check, Globe, Plus, Trash2, ArrowLeft, MessageSquare, GraduationCap, Link2
+  ChevronRight, Check, Globe, Plus, Trash2, ArrowLeft, MessageSquare, GraduationCap, Link2, BarChart, PieChart, Activity
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -48,7 +48,7 @@ export default function HostHackathon() {
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<'details' | 'registrations' | 'messages'>('registrations');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'details' | 'registrations' | 'messages'>('analytics');
   const [loadingHosted, setLoadingHosted] = useState(true);
 
   // Edit State
@@ -307,6 +307,19 @@ export default function HostHackathon() {
     if (!form.name || !form.organizer || !form.description) {
       toast.error("Please fill in all required fields (Name, Organizer, Description).");
       return;
+    }
+
+    if (form.startDate && form.endDate) {
+      if (new Date(form.endDate) < new Date(form.startDate)) {
+        toast.error("Event End Date cannot be earlier than Event Start Date.");
+        return;
+      }
+    }
+    if (form.registrationDeadline && form.startDate) {
+      if (new Date(form.registrationDeadline) > new Date(form.startDate)) {
+        toast.error("Registration Deadline cannot be later than Event Start Date.");
+        return;
+      }
     }
 
     setIsPublishing(true);
@@ -613,9 +626,9 @@ export default function HostHackathon() {
                   </div>
                 </div>
 
-                {/* Tab switcher */}
-                <div className="flex gap-2 mb-6">
+                <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
                   {[
+                    { id: 'analytics', label: 'Analytics', icon: BarChart },
                     { id: 'registrations', label: `Registrations (${registrations.length})`, icon: Users },
                     { id: 'messages', label: `Messages (${Object.keys(conversations).length})`, icon: MessageSquare },
                     { id: 'details', label: 'Details Overview', icon: Calendar }
@@ -639,6 +652,30 @@ export default function HostHackathon() {
                     );
                   })}
                 </div>
+
+                {/* Analytics Dashboard */}
+                {activeTab === 'analytics' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
+                      <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="flex items-center gap-2 text-white/50 mb-2"><BarChart size={14} /> <span className="text-xs font-500">Total Participants</span></div>
+                        <div className="text-2xl font-800 text-white">{registrations.length}</div>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="flex items-center gap-2 text-white/50 mb-2"><Users size={14} /> <span className="text-xs font-500">Registered Teams</span></div>
+                        <div className="text-2xl font-800 text-white">{new Set(registrations.map(r => r.team_id).filter(Boolean)).size}</div>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="flex items-center gap-2 text-white/50 mb-2"><Trophy size={14} /> <span className="text-xs font-500">Total Hosted Events</span></div>
+                        <div className="text-2xl font-800 text-white">{hostedHackathons.length}</div>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                        <div className="flex items-center gap-2 text-white/50 mb-2"><Activity size={14} /> <span className="text-xs font-500">Active Events</span></div>
+                        <div className="text-2xl font-800 text-hack-primary">{hostedHackathons.filter(h => h.status === 'open').length}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Registrations List */}
                 {activeTab === 'registrations' && (

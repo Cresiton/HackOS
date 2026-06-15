@@ -4,6 +4,7 @@ import {
   Smile, Pin, Check, CheckCheck, ArrowLeft, X,
   Users, MessageSquare, ChevronDown, Info
 } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { toast } from "sonner";
 interface ChatMessage {
   id: string;
   sender: "me" | "them";
+  senderId?: string;
   senderName?: string;
   senderAvatar?: string;
   text: string;
@@ -30,6 +32,7 @@ interface Conversation {
   isOnline: boolean;
   isTeam: boolean;
   teamId?: string;
+  otherUserId?: string;
   avatar?: string;
   icon?: string;
   color?: string;
@@ -135,6 +138,7 @@ function MessageBubble({
   showAvatar: boolean;
   prevMsg?: ChatMessage;
 }) {
+  const navigate = useNavigate();
   const isMe = msg.sender === "me";
   const [showReactions, setShowReactions] = useState(false);
   const [reactions, setReactions] = useState<string[]>(msg.reactions || []);
@@ -165,7 +169,10 @@ function MessageBubble({
       {!isMe && (
         <div className="w-7 h-7 flex-shrink-0 mb-1">
           {showAvatar && msg.senderAvatar ? (
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20">
+            <div 
+              onClick={() => msg.senderId && navigate(`/profile/${msg.senderId}`)}
+              className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+            >
               <img src={msg.senderAvatar} alt="" className="w-full h-full object-cover" />
             </div>
           ) : null}
@@ -289,6 +296,8 @@ function DateDivider({ label }: { label: string }) {
 // ─── Main Messages Component ──────────────────────────────────────────────────
 export default function Messages() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [allMessages, setAllMessages] = useState<Record<string, ChatMessage[]>>({});
@@ -298,6 +307,10 @@ export default function Messages() {
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [scrolledUp, setScrolledUp] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [typingUsers, setTypingUsers] = useState<Record<string, NodeJS.Timeout>>({});
+  const typingChannelRef = useRef<any>(null);
 
   // Collapsible Team Info Panel
   const [showTeamPanel, setShowTeamPanel] = useState(true);
@@ -330,16 +343,17 @@ export default function Messages() {
     try {
       const { data: unreadMsgs } = await supabase
         .from("messages")
-        .select("id, content")
+        .select("id, is_seen, content")
         .eq("conversation_id", convoId)
         .neq("sender_id", user.id);
 
       if (unreadMsgs) {
-        const unseen = unreadMsgs.filter(m => !(m.content || "").endsWith("\n\n---SEEN---"));
+        // Support both old hack and new schema
+        const unseen = unreadMsgs.filter(m => !m.is_seen && !(m.content || "").endsWith("\n\n---SEEN---"));
         if (unseen.length > 0) {
           const promises = unseen.map(m => supabase
             .from("messages")
-            .update({ content: `${m.content}\n\n---SEEN---` })
+            .update({ is_seen: true, content: `${m.content}\n\n---SEEN---` })
             .eq("id", m.id)
           );
           await Promise.all(promises);
@@ -425,14 +439,14 @@ export default function Messages() {
       // Calculate unread counts from messages content
       const { data: unreadData } = await supabase
         .from("messages")
-        .select("id, conversation_id, content, sender_id")
+        .select("id, conversation_id, content, is_seen, sender_id")
         .in("conversation_id", convIds)
         .neq("sender_id", user.id);
 
       const unreadCounts: Record<string, number> = {};
       if (unreadData) {
         unreadData.forEach(msg => {
-          if (!(msg.content || "").endsWith("\n\n---SEEN---")) {
+          if (!msg.is_seen && !(msg.content || "").endsWith("\n\n---SEEN---")) {
             unreadCounts[msg.conversation_id] = (unreadCounts[msg.conversation_id] || 0) + 1;
           }
         });
@@ -468,21 +482,27 @@ export default function Messages() {
           ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : "";
 
+        const isOnline = otherMember ? onlineUsers.has(otherMember.id) : false;
+
         return {
           id: c.id,
           name: name,
           lastMessage: lastText,
           time: lastTime,
           unread: unreadCounts[c.id] || 0,
-          isOnline: true,
+          isOnline: isOnline,
           isTeam: c.is_team,
           teamId: c.team_id,
+          otherUserId: otherMember?.id,
           avatar: avatar,
           icon: icon,
           color: color,
           pinned: false,
+          lastMessageTimestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
         };
       });
+
+      formattedConvs.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
 
       setConversations(formattedConvs);
 
@@ -516,6 +536,7 @@ export default function Messages() {
         return {
           id: m.id,
           sender: m.sender_id === user.id ? ("me" as const) : ("them" as const),
+          senderId: m.sender_id,
           senderName: senderProfile?.name || "Builder",
           senderAvatar: senderProfile?.linkedin_avatar || senderProfile?.github_avatar || senderProfile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderProfile?.name || 'builder'}`,
           text: (m.content || "").replace(/\n\n---SEEN---$/, ""),
@@ -592,6 +613,30 @@ export default function Messages() {
   }, [selectedId, selectedConv?.isTeam]);
 
   useEffect(() => {
+    if (!user) return;
+    const room = supabase.channel('online-users');
+    
+    room
+      .on('presence', { event: 'sync' }, () => {
+        const newState = room.presenceState();
+        const users = new Set<string>();
+        Object.values(newState).forEach(presences => {
+          presences.forEach((p: any) => users.add(p.user_id));
+        });
+        setOnlineUsers(users);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await room.track({ user_id: user.id });
+        }
+      });
+      
+    return () => {
+      supabase.removeChannel(room);
+    }
+  }, [user]);
+
+  useEffect(() => {
     if (!selectedId || !user) return;
 
     // Real-time Postgres changes for messages table
@@ -616,7 +661,7 @@ export default function Messages() {
                 ...prev,
                 [selectedId]: list.map(m => {
                   if (m.id === newMsg.id) {
-                    const isSeen = (newMsg.content || "").endsWith("\n\n---SEEN---");
+                    const isSeen = newMsg.is_seen || (newMsg.content || "").endsWith("\n\n---SEEN---");
                     return {
                       ...m,
                       text: (newMsg.content || "").replace(/\n\n---SEEN---$/, ""),
@@ -650,12 +695,13 @@ export default function Messages() {
             const formattedMsg: ChatMessage = {
               id: newMsg.id,
               sender: newMsg.sender_id === user.id ? "me" : "them",
+              senderId: newMsg.sender_id,
               senderName: profileData?.name || "Builder",
               senderAvatar: avatar,
               text: (newMsg.content || "").replace(/\n\n---SEEN---$/, ""),
               time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               date: new Date(newMsg.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
-              status: (newMsg.content || "").endsWith("\n\n---SEEN---") || newMsg.sender_id !== user.id ? "seen" : "sent",
+              status: newMsg.is_seen || (newMsg.content || "").endsWith("\n\n---SEEN---") || newMsg.sender_id !== user.id ? "seen" : "sent",
             };
 
             setAllMessages(prev => {
@@ -677,104 +723,137 @@ export default function Messages() {
           }
         }
       )
+      .on(
+        "broadcast",
+        { event: "typing" },
+        (payload) => {
+          const userId = payload.payload.user_id;
+          if (userId !== user.id) {
+            setConversations(prev => prev.map(c => 
+              c.id === selectedId ? { ...c, typing: true } : c
+            ));
+            
+            if (typingUsers[userId]) {
+              clearTimeout(typingUsers[userId]);
+            }
+            
+            const timeout = setTimeout(() => {
+              setConversations(prev => prev.map(c => 
+                c.id === selectedId ? { ...c, typing: false } : c
+              ));
+            }, 2000);
+            
+            setTypingUsers(prev => ({ ...prev, [userId]: timeout }));
+          }
+        }
+      )
       .subscribe();
+
+    typingChannelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
+      typingChannelRef.current = null;
     };
   }, [selectedId, user]);
 
   useEffect(() => {
     if (!user) return;
 
-    const searchParams = new URLSearchParams(window.location.search);
     const targetUserId = searchParams.get("user_id");
     const targetTeamId = searchParams.get("team_id");
+    const targetConversationId = searchParams.get("conversation");
 
     async function initializeConversations() {
-      if (targetUserId) {
-        const { data: userMemberships } = await supabase
-          .from("conversation_members")
-          .select("conversation_id")
-          .eq("user_id", user.id);
+      try {
+        if (targetConversationId) {
+          await loadConversations(targetConversationId);
+        } else if (targetUserId) {
+          const { data: userMemberships } = await supabase
+            .from("conversation_members")
+            .select("conversation_id")
+            .eq("user_id", user.id);
 
-        const convIds = (userMemberships || []).map(m => m.conversation_id);
+          const convIds = (userMemberships || []).map(m => m.conversation_id);
 
-        let existingConvId = null;
-        if (convIds.length > 0) {
+          let existingConvId = null;
+          if (convIds.length > 0) {
+            const { data: matches } = await supabase
+              .from("conversation_members")
+              .select("conversation_id")
+              .in("conversation_id", convIds)
+              .eq("user_id", targetUserId);
+            
+            if (matches && matches.length > 0) {
+              existingConvId = matches[0].conversation_id;
+            }
+          }
+
+          if (existingConvId) {
+            await loadConversations(existingConvId);
+          } else {
+            const { data: newConv } = await supabase
+              .from("conversations")
+              .insert({ is_team: false })
+              .select("id")
+              .single();
+
+            if (newConv) {
+              await supabase.from("conversation_members").insert([
+                { conversation_id: newConv.id, user_id: user.id },
+                { conversation_id: newConv.id, user_id: targetUserId }
+              ]);
+              await loadConversations(newConv.id);
+            }
+          }
+        } else if (targetTeamId) {
           const { data: matches } = await supabase
             .from("conversations")
-            .select("id, conversation_members!inner(user_id)")
-            .eq("is_team", false)
-            .in("id", convIds)
-            .eq("conversation_members.user_id", targetUserId);
-          
-          if (matches && matches.length > 0) {
-            existingConvId = matches[0].id;
-          }
-        }
-
-        if (existingConvId) {
-          loadConversations(existingConvId);
-        } else {
-          const { data: newConv } = await supabase
-            .from("conversations")
-            .insert({ is_team: false })
             .select("id")
-            .single();
+            .eq("is_team", true)
+            .eq("team_id", targetTeamId)
+            .maybeSingle();
 
-          if (newConv) {
-            await supabase.from("conversation_members").insert([
-              { conversation_id: newConv.id, user_id: user.id },
-              { conversation_id: newConv.id, user_id: targetUserId }
-            ]);
-            loadConversations(newConv.id);
+          if (matches) {
+            await loadConversations(matches.id);
+          } else {
+            const { data: newConv } = await supabase
+              .from("conversations")
+              .insert({ is_team: true, team_id: targetTeamId })
+              .select("id")
+              .single();
+
+            if (newConv) {
+              const { data: teamMems } = await supabase
+                .from("team_members")
+                .select("user_id")
+                .eq("team_id", targetTeamId);
+              
+              const insertRows = (teamMems || []).map(m => ({
+                conversation_id: newConv.id,
+                user_id: m.user_id
+              }));
+              if (!insertRows.some(r => r.user_id === user.id)) {
+                insertRows.push({ conversation_id: newConv.id, user_id: user.id });
+              }
+
+              if (insertRows.length > 0) {
+                await supabase.from("conversation_members").insert(insertRows);
+              }
+              await loadConversations(newConv.id);
+            }
           }
-        }
-      } else if (targetTeamId) {
-        const { data: matches } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("is_team", true)
-          .eq("team_id", targetTeamId)
-          .maybeSingle();
-
-        if (matches) {
-          loadConversations(matches.id);
         } else {
-          const { data: newConv } = await supabase
-            .from("conversations")
-            .insert({ is_team: true, team_id: targetTeamId })
-            .select("id")
-            .single();
-
-          if (newConv) {
-            const { data: teamMems } = await supabase
-              .from("team_members")
-              .select("user_id")
-              .eq("team_id", targetTeamId);
-            
-            const insertRows = (teamMems || []).map(m => ({
-              conversation_id: newConv.id,
-              user_id: m.user_id
-            }));
-            if (!insertRows.some(r => r.user_id === user.id)) {
-              insertRows.push({ conversation_id: newConv.id, user_id: user.id });
-            }
-
-            if (insertRows.length > 0) {
-              await supabase.from("conversation_members").insert(insertRows);
-            }
-            loadConversations(newConv.id);
-          }
+          await loadConversations();
         }
-      } else {
-        loadConversations();
+      } catch (err) {
+        console.error("Error initializing conversations:", err);
+        await loadConversations();
       }
     }
 
     initializeConversations();
-  }, [user]);
+  }, [user, searchParams]);
 
   const selectConversation = (id: string) => {
     setSelectedId(id);
@@ -859,6 +938,13 @@ export default function Messages() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
+    if (typingChannelRef.current && user && selectedId) {
+      typingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { user_id: user.id }
+      });
+    }
   };
 
   const handleScroll = () => {
@@ -985,11 +1071,27 @@ export default function Messages() {
         className={`flex-1 flex flex-col min-w-0 ${showMobileChat ? "flex" : "hidden lg:flex"}`}
         style={{ background: "#06070B" }}
       >
-        {/* Chat Header */}
-        <div
-          className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(6,7,11,0.9)", backdropFilter: "blur(10px)" }}
-        >
+        {conversations.length === 0 && !loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="text-6xl mb-6 animate-bounce" style={{ animationDuration: '3s' }}>💬</div>
+            <h2 className="text-2xl font-bold text-white mb-3">Start a Conversation</h2>
+            <p className="text-white/40 text-sm max-w-md mb-8">
+              Connect with developers and collaborate on hackathons.
+            </p>
+            <button 
+              onClick={() => navigate('/community')}
+              className="hack-btn-primary"
+            >
+              Find Developers
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Chat Header */}
+            <div
+              className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(6,7,11,0.9)", backdropFilter: "blur(10px)" }}
+            >
           <div className="flex items-center gap-3">
             {/* Back on mobile */}
             <button
@@ -1001,7 +1103,10 @@ export default function Messages() {
 
             <div className="relative">
               {selectedConv?.avatar ? (
-                <div className="w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20">
+                <div 
+                  onClick={() => selectedConv?.otherUserId && navigate(`/profile/${selectedConv.otherUserId}`)}
+                  className={`w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20 ${selectedConv?.otherUserId ? 'cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all' : ''}`}
+                >
                   <img src={selectedConv.avatar} alt="" className="w-full h-full object-cover" />
                 </div>
               ) : (
@@ -1193,6 +1298,8 @@ export default function Messages() {
             <span className="text-white/15 text-[10px]">Enter to send · Shift+Enter new line</span>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {/* ── TEAM DETAILS PANEL ── */}
@@ -1226,11 +1333,19 @@ export default function Messages() {
             <div className="text-white/30 text-[10px] uppercase tracking-wider font-700">Team Leader</div>
             {teamMembersList.filter(m => m.role === "leader").map(leader => (
               <div key={leader.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/2 border border-white/5 animate-fade-in">
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0">
+                <div 
+                  onClick={() => navigate(`/profile/${leader.id}`)}
+                  className="w-8 h-8 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+                >
                   <img src={leader.avatar} alt={leader.name} className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-white text-xs font-600 truncate">{leader.name}</div>
+                  <div 
+                    onClick={() => navigate(`/profile/${leader.id}`)}
+                    className="text-white text-xs font-600 truncate cursor-pointer hover:text-hack-primary transition-colors"
+                  >
+                    {leader.name}
+                  </div>
                   <div className="text-hack-primary text-[9px] font-600 uppercase mt-0.5">Leader</div>
                 </div>
               </div>
@@ -1240,11 +1355,19 @@ export default function Messages() {
             <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
               {teamMembersList.filter(m => m.role !== "leader").map(mem => (
                 <div key={mem.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/2 border border-white/5 animate-fade-in">
-                  <div className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0">
+                  <div 
+                    onClick={() => navigate(`/profile/${mem.id}`)}
+                    className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+                  >
                     <img src={mem.avatar} alt={mem.name} className="w-full h-full object-cover" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-white text-xs font-500 truncate">{mem.name}</div>
+                    <div 
+                      onClick={() => navigate(`/profile/${mem.id}`)}
+                      className="text-white text-xs font-500 truncate cursor-pointer hover:text-hack-primary transition-colors"
+                    >
+                      {mem.name}
+                    </div>
                     <div className="text-white/35 text-[9px] capitalize mt-0.5">{mem.role}</div>
                   </div>
                 </div>

@@ -554,12 +554,15 @@ function TeamDetailPanel({ team, user, activeTab, setActiveTab, onUpdate, onClos
               <div className="space-y-3">
                 {team.members.map((member: any) => (
                   <div key={member.id} className="flex items-center justify-between p-3 rounded-xl bg-white/2 border border-white/5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20">
+                    <div 
+                      onClick={() => navigate(`/profile/${member.id}`)}
+                      className="flex items-center gap-3 cursor-pointer group"
+                    >
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20 group-hover:ring-2 group-hover:ring-hack-primary transition-all">
                         <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
                       </div>
                       <div>
-                        <div className="text-white text-sm font-500 flex items-center gap-1.5">
+                        <div className="text-white text-sm font-500 flex items-center gap-1.5 group-hover:text-hack-primary transition-colors">
                           {member.name}
                           {member.role === "leader" && <Shield size={11} className="text-hack-primary" />}
                         </div>
@@ -818,12 +821,15 @@ function TeamDetailPanel({ team, user, activeTab, setActiveTab, onUpdate, onClos
               <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                 {replacementCandidates.map((candidate) => (
                   <div key={candidate.id} className="p-3 rounded-xl bg-white/2 border border-white/5 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full overflow-hidden">
+                    <div 
+                      onClick={() => navigate(`/profile/${candidate.id}`)}
+                      className="flex items-center gap-2.5 cursor-pointer group"
+                    >
+                      <div className="w-8 h-8 rounded-full overflow-hidden group-hover:ring-2 group-hover:ring-hack-primary transition-all">
                         <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" />
                       </div>
                       <div>
-                        <div className="text-white text-xs font-600">{candidate.name}</div>
+                        <div className="text-white text-xs font-600 group-hover:text-hack-primary transition-colors">{candidate.name}</div>
                         <div className="text-[10px] text-hack-green mt-0.5">{candidate.why}</div>
                       </div>
                     </div>
@@ -1206,8 +1212,10 @@ export default function MyTeams() {
                       {team.members.slice(0, 4).map((m: any, i: number) => (
                         <div
                           key={m.id}
-                          className="w-8 h-8 rounded-full overflow-hidden border-2"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/profile/${m.id}`); }}
+                          className="w-8 h-8 rounded-full overflow-hidden border-2 cursor-pointer hover:ring-2 hover:ring-hack-primary z-10 relative"
                           style={{ borderColor: "#131826" }}
+                          title={m.name}
                         >
                           <img src={m.avatar} alt={m.name} className="w-full h-full object-cover" />
                         </div>

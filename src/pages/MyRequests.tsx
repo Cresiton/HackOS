@@ -101,7 +101,7 @@ export default function MyRequests() {
       if (invitesTeamIds.length > 0) {
         const { data: invitesLeaders } = await supabase
           .from("team_members")
-          .select("team_id, profiles (name, avatar_url, github_avatar, linkedin_avatar)")
+          .select("team_id, profiles (id, name, avatar_url, github_avatar, linkedin_avatar)")
           .eq("role", "leader")
           .in("team_id", invitesTeamIds);
         
@@ -110,6 +110,7 @@ export default function MyRequests() {
             const profile = Array.isArray(sl.profiles) ? sl.profiles[0] : sl.profiles;
             if (profile) {
               invitesLeaderMap[sl.team_id] = {
+                id: profile.id,
                 name: profile.name,
                 avatar: profile.linkedin_avatar || profile.github_avatar || profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.name}`
               };
@@ -126,6 +127,7 @@ export default function MyRequests() {
         role: r.role || "Developer",
         date: new Date(r.created_at).toLocaleDateString(),
         status: r.status,
+        leaderId: invitesLeaderMap[r.team_id]?.id || "",
         leader: invitesLeaderMap[r.team_id]?.name || "Team Leader",
         leaderAvatar: invitesLeaderMap[r.team_id]?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.team_id}`,
         message: r.message || "",
@@ -538,11 +540,19 @@ export default function MyRequests() {
                   <div key={req.id} className="hack-card p-6 flex flex-col justify-between">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-hack-primary/20">
+                        <div 
+                          onClick={() => navigate(`/profile/${req.userId}`)}
+                          className="w-10 h-10 rounded-full overflow-hidden bg-hack-primary/20 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
+                        >
                           <img src={req.avatar} alt={req.applicantName} className="w-full h-full object-cover" />
                         </div>
                         <div>
-                          <h3 className="text-white font-700 text-base">{req.applicantName}</h3>
+                          <h3 
+                            onClick={() => navigate(`/profile/${req.userId}`)}
+                            className="text-white font-700 text-base cursor-pointer hover:text-hack-primary transition-colors"
+                          >
+                            {req.applicantName}
+                          </h3>
                           <div className="text-white/40 text-xs">Applying to <strong className="text-white/60">{req.teamName}</strong> · {req.hackathon}</div>
                         </div>
                       </div>
@@ -608,12 +618,22 @@ export default function MyRequests() {
                     <div key={req.id} className="hack-card p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full overflow-hidden bg-hack-primary/20">
+                          <div 
+                            onClick={() => req.leaderId && navigate(`/profile/${req.leaderId}`)}
+                            className={`w-10 h-10 rounded-full overflow-hidden bg-hack-primary/20 ${req.leaderId ? 'cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all' : ''}`}
+                          >
                             <img src={req.leaderAvatar} alt={req.leader} className="w-full h-full object-cover" />
                           </div>
                           <div>
                             <h3 className="text-white font-700 text-base">Invitation from Team {req.teamName}</h3>
-                            <div className="text-white/40 text-xs">Leader: {req.leader} · Event: {req.hackathon}</div>
+                            <div className="text-white/40 text-xs">
+                              Leader: <span 
+                                onClick={() => req.leaderId && navigate(`/profile/${req.leaderId}`)}
+                                className={req.leaderId ? 'cursor-pointer hover:text-hack-primary transition-colors text-white/60 font-600' : ''}
+                              >
+                                {req.leader}
+                              </span> · Event: {req.hackathon}
+                            </div>
                           </div>
                         </div>
                         <span

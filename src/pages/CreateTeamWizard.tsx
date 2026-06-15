@@ -1290,11 +1290,19 @@ export default function CreateTeamWizard() {
                           className="p-3 rounded-xl border flex items-center justify-between bg-white/2 border-white/5"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full overflow-hidden border border-white/10 bg-white/5">
+                            <div 
+                              onClick={() => navigate(`/profile/${candidate.id}`)}
+                              className="w-9 h-9 rounded-full overflow-hidden border border-white/10 bg-white/5 cursor-pointer hover:border-hack-primary/50 hover:ring-2 hover:ring-hack-primary/30 transition-all"
+                            >
                               <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" />
                             </div>
                             <div>
-                              <div className="text-white text-xs font-600">{candidate.name}</div>
+                              <div 
+                                onClick={() => navigate(`/profile/${candidate.id}`)}
+                                className="text-white text-xs font-600 cursor-pointer hover:text-hack-primary transition-colors"
+                              >
+                                {candidate.name}
+                              </div>
                               <div className="text-[10px] text-white/40">{candidate.role} · {candidate.location}</div>
                               <div className="text-[9px] text-hack-green font-500 mt-0.5">{candidate.why}</div>
                             </div>
@@ -1325,11 +1333,19 @@ export default function CreateTeamWizard() {
                           className="p-3 rounded-xl border flex items-center justify-between bg-white/2 border-white/5"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full overflow-hidden border border-white/10 bg-white/5">
+                            <div 
+                              onClick={() => navigate(`/profile/${candidate.id}`)}
+                              className="w-9 h-9 rounded-full overflow-hidden border border-white/10 bg-white/5 cursor-pointer hover:border-hack-primary/50 hover:ring-2 hover:ring-hack-primary/30 transition-all"
+                            >
                               <img src={candidate.avatar} alt={candidate.name} className="w-full h-full object-cover" />
                             </div>
                             <div>
-                              <div className="text-white text-xs font-600">{candidate.name}</div>
+                              <div 
+                                onClick={() => navigate(`/profile/${candidate.id}`)}
+                                className="text-white text-xs font-600 cursor-pointer hover:text-hack-primary transition-colors"
+                              >
+                                {candidate.name}
+                              </div>
                               <div className="text-[10px] text-white/40">{candidate.role} · {candidate.location}</div>
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {candidate.skills.slice(0, 3).map(s => (

@@ -385,6 +385,29 @@ export default function RegisterHackathon() {
           action_label: "View Event"
         });
 
+      // Send Notification to Organizer
+      let ownerId = null;
+      try {
+        const parts = (hack.description || "").split("\n\n---METADATA---\n");
+        if (parts.length > 1) {
+          const meta = JSON.parse(parts[1]);
+          ownerId = meta.owner_id;
+        }
+      } catch (e) {}
+
+      if (ownerId && ownerId !== user.id) {
+        await supabase
+          .from("notifications")
+          .insert({
+            user_id: ownerId,
+            type: "hackathon_registration",
+            title: "New Registration",
+            description: `${fullName.trim()} has registered for ${hack.title}.`,
+            action_url: "/host-hackathon",
+            action_label: "View Dashboard"
+          });
+      }
+
       toast.success("Registration completed successfully!");
       navigate(`/hackathon/${hack.id}`);
 

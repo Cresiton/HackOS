@@ -113,6 +113,53 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 // ───────── Step Components ─────────
 
 function Step1BasicInfo({ data, onChange }: { data: any; onChange: (d: any) => void }) {
+  const [detectingLocation, setDetectingLocation] = useState(false);
+  const [locationDenied, setLocationDenied] = useState(false);
+
+  const detectLocation = () => {
+    setDetectingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      setLocationDenied(true);
+      setDetectingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const geoData = await res.json();
+          const city = geoData.address.city || geoData.address.town || geoData.address.village || "";
+          const state = geoData.address.state || "";
+          const country = geoData.address.country || "";
+          const locStr = [city, state, country].filter(Boolean).join(", ");
+          
+          onChange({
+            ...data,
+            location: locStr,
+            latitude,
+            longitude,
+          });
+          toast.success("Location detected successfully!");
+          setLocationDenied(false);
+        } catch (error) {
+          console.error(error);
+          toast.error("Failed to get location details from coordinates.");
+          setLocationDenied(true);
+        } finally {
+          setDetectingLocation(false);
+        }
+      },
+      (error) => {
+        console.error(error);
+        toast.error("Location access denied or unavailable. Please enter manually.");
+        setLocationDenied(true);
+        setDetectingLocation(false);
+      }
+    );
+  };
   return (
     <div className="space-y-5">
       <div>
@@ -144,13 +191,35 @@ function Step1BasicInfo({ data, onChange }: { data: any; onChange: (d: any) => v
 
       <div>
         <label className="block text-white/60 text-sm font-500 mb-2">Location</label>
-        <input
-          type="text"
-          value={data.location || ""}
-          onChange={(e) => onChange({ ...data, location: e.target.value })}
-          placeholder="City, State, Country"
-          className="hack-input"
-        />
+        {(!data.location && !locationDenied) ? (
+          <button
+            type="button"
+            onClick={detectLocation}
+            disabled={detectingLocation}
+            className="w-full hack-btn-secondary py-3 flex items-center justify-center gap-2"
+          >
+            {detectingLocation ? <Loader2 size={16} className="animate-spin" /> : <Globe size={16} />}
+            {detectingLocation ? "Detecting Location..." : "Allow Location Access"}
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={data.location || ""}
+              onChange={(e) => onChange({ ...data, location: e.target.value })}
+              placeholder="City, State, Country"
+              className="hack-input"
+            />
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] text-white/30">
+                {data.latitude ? "GPS coordinates saved." : "Manual entry mode."}
+              </span>
+              <button type="button" onClick={detectLocation} className="text-[10px] text-hack-primary hover:underline">
+                Re-detect Location
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -916,6 +985,8 @@ export default function ProfileSetupWizard() {
       name: user?.name || "",
       role: user?.role || "",
       location: user?.location || "",
+      latitude: user?.latitude || undefined,
+      longitude: user?.longitude || undefined,
       bio: user?.bio || "",
       skills: user?.skills || [],
       availability: user?.availability || "available",
@@ -987,6 +1058,8 @@ export default function ProfileSetupWizard() {
         }
         if (user.location && (!prev.location || prev.location.trim() === "")) {
           newFormData.location = user.location;
+          newFormData.latitude = user.latitude;
+          newFormData.longitude = user.longitude;
           updated = true;
         }
         if (user.bio && (!prev.bio || prev.bio.trim() === "")) {
@@ -1110,6 +1183,8 @@ export default function ProfileSetupWizard() {
         name: formData.name || user?.name,
         role: formData.role || user?.role,
         location: formData.location || user?.location,
+        latitude: formData.latitude || user?.latitude,
+        longitude: formData.longitude || user?.longitude,
         bio: formData.bio || user?.bio,
         skills: formData.skills || user?.skills,
         availability: formData.availability as any,
@@ -1126,9 +1201,9 @@ export default function ProfileSetupWizard() {
       sessionStorage.removeItem("hackos_wizard_state");
       toast.success("Profile complete! Welcome to HackOS 🚀");
       navigate("/dashboard");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Failed to complete profile.");
+      toast.error(`Failed to complete profile: ${err?.message || "Unknown error"}`);
     }
   };
 

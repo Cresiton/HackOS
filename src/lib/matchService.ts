@@ -154,7 +154,8 @@ export const matchService = {
     const { data: swipes } = await supabase
       .from('match_swipes')
       .select('target_id')
-      .eq('swiper_id', userId);
+      .eq('swiper_id', userId)
+      .eq('action', 'interested');
       
     const swipedIds = (swipes || []).map(s => s.target_id);
     swipedIds.push(userId); // Exclude self

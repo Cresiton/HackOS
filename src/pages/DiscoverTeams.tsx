@@ -399,7 +399,12 @@ export default function DiscoverTeams() {
                 <div className="grid grid-cols-2 gap-3 mb-4 p-3 rounded-xl bg-white/2 border border-white/5">
                   <div>
                     <span className="text-white/30 text-[9px] uppercase font-600">Team Leader</span>
-                    <div className="text-white text-xs truncate font-500">{team.leader.name}</div>
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); navigate(`/profile/${team.leader.id}`); }}
+                      className="text-white text-xs truncate font-500 cursor-pointer hover:text-hack-primary transition-colors"
+                    >
+                      {team.leader.name}
+                    </div>
                   </div>
                   <div>
                     <span className="text-white/30 text-[9px] uppercase font-600">Capacity</span>
@@ -503,13 +508,17 @@ export default function DiscoverTeams() {
                 <span className="text-white/30 text-xs block mb-3">Team Members ({selectedTeam.members.length})</span>
                 <div className="space-y-3">
                   {selectedTeam.members.map((mem) => (
-                    <div key={mem.id} className="flex items-center justify-between p-3 rounded-xl bg-white/2 border border-white/5">
+                    <div 
+                      key={mem.id} 
+                      onClick={() => navigate(`/profile/${mem.id}`)}
+                      className="flex items-center justify-between p-3 rounded-xl bg-white/2 border border-white/5 cursor-pointer hover:bg-white/5 hover:border-hack-primary/30 transition-all"
+                    >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full overflow-hidden">
                           <img src={mem.avatar} alt={mem.name} className="w-full h-full object-cover" />
                         </div>
                         <div>
-                          <div className="text-white text-xs font-600">{mem.name}</div>
+                          <div className="text-white text-xs font-600 group-hover:text-hack-primary">{mem.name}</div>
                           <div className="text-[10px] text-white/40 capitalize">{mem.role}</div>
                         </div>
                       </div>

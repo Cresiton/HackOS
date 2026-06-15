@@ -206,6 +206,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: profile.role || "Full Stack Developer",
         skills: skills,
         location: profile.location || "",
+        latitude: profile.latitude || undefined,
+        longitude: profile.longitude || undefined,
         bio: profile.bio || "",
         github: profile.github_url || undefined,
         linkedin: profile.linkedin_url || undefined,
@@ -454,6 +456,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (updates.role !== undefined) dbUpdates.role = updates.role;
       if (updates.bio !== undefined) dbUpdates.bio = updates.bio;
       if (updates.location !== undefined) dbUpdates.location = updates.location;
+      if (updates.latitude !== undefined) dbUpdates.latitude = updates.latitude;
+      if (updates.longitude !== undefined) dbUpdates.longitude = updates.longitude;
       if (updates.college !== undefined) dbUpdates.college = updates.college;
       if (updates.experience !== undefined) dbUpdates.experience = updates.experience;
       if (updates.availability !== undefined) dbUpdates.availability = updates.availability;

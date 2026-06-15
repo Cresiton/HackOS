@@ -225,14 +225,19 @@ interface GitHubAnalyticsCardProps {
   initialAnalytics?: any;
   onConnect?: (analytics: any) => void;
   onDisconnect?: () => void;
+  userId?: string;
 }
 
 export default function GitHubAnalyticsCard({
   onConnect,
   onDisconnect,
+  userId
 }: GitHubAnalyticsCardProps) {
   const { user: currentUser, updateUser } = useAuth();
-  const { stats, loading, syncing, error, syncStats } = useGithubStats(currentUser?.id);
+  const targetUserId = userId || currentUser?.id;
+  const isOwner = !userId || userId === currentUser?.id;
+
+  const { stats, loading, syncing, error, syncStats } = useGithubStats(targetUserId);
 
   const [activeTab, setActiveTab] = useState<"languages" | "repos" | "activity">("languages");
   const [repos, setRepos] = useState<RepoProps[]>([]);
@@ -337,7 +342,7 @@ export default function GitHubAnalyticsCard({
         }))
     : [];
 
-  const showStatsPrompt = currentUser?.github_connected && !stats && !loading;
+  const showStatsPrompt = isOwner && currentUser?.github_connected && !stats && !loading;
 
   return (
     <div
@@ -375,7 +380,7 @@ export default function GitHubAnalyticsCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {currentUser?.github_connected && (
+          {isOwner && currentUser?.github_connected && (
             <>
               <div
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-600"
@@ -417,11 +422,18 @@ export default function GitHubAnalyticsCard({
         )}
 
         {/* OAuth Not Connected Prompt */}
-        {!currentUser?.github_connected && (
+        {isOwner && !currentUser?.github_connected && (
           <ConnectPrompt
             onConnect={handleOAuthConnect}
             connecting={loading}
           />
+        )}
+
+        {/* Not Connected (Public View) */}
+        {!isOwner && !stats && !loading && (
+          <div className="text-center py-8 text-white/40 text-sm">
+            This user hasn't connected their GitHub account yet.
+          </div>
         )}
 
         {/* Sync Prompt if connected but no database stats loaded yet */}
@@ -482,14 +494,14 @@ export default function GitHubAnalyticsCard({
                 style={{ borderColor: "rgba(255,255,255,0.15)" }}
               >
                 <img
-                  src={currentUser?.avatar || `https://github.com/${stats.github_username}.png`}
+                  src={isOwner ? currentUser?.avatar || `https://github.com/${stats.github_username}.png` : `https://github.com/${stats.github_username}.png`}
                   alt={stats.github_username}
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-white font-600 text-sm flex items-center gap-2">
-                  {currentUser?.name || stats.github_username}
+                  {isOwner ? currentUser?.name || stats.github_username : stats.github_username}
                   <span
                     className="text-[9px] font-700 px-2 py-0.5 rounded-full"
                     style={{

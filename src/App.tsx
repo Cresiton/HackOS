@@ -13,6 +13,7 @@ import MyRequests from "@/pages/MyRequests";
 import Messages from "@/pages/Messages";
 import NotificationsPage from "@/pages/NotificationsPage";
 import ProfilePage from "@/pages/ProfilePage";
+import PublicProfilePage from "@/pages/PublicProfilePage";
 import AITeamBuilder from "@/pages/AITeamBuilder";
 import HostHackathon from "@/pages/HostHackathon";
 import HackathonDetail from "@/pages/HackathonDetail";
@@ -23,6 +24,7 @@ import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
 import SettingsPage from "@/pages/SettingsPage";
 import RegisterHackathon from "@/pages/RegisterHackathon";
 import HackOSMatch from "@/pages/HackOSMatch";
+import GlobalSearch from "@/pages/GlobalSearch";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -94,10 +96,12 @@ export default function App() {
               <Route path="/messages" element={<Messages />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/profile/:id" element={<PublicProfilePage />} />
               <Route path="/ai-team-builder" element={<AITeamBuilder />} />
               <Route path="/host-hackathon" element={<HostHackathon />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/match" element={<HackOSMatch />} />
+              <Route path="/search" element={<GlobalSearch />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
