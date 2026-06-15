@@ -60,7 +60,7 @@ export function deserializeHackathon(dbHack: any): Hackathon {
   let team_size_max = 4;
   let customFields: any[] = [];
   
-  const parts = description.split("\n\n---METADATA---\n");
+  const parts = description.split(/[\r\n]*---METADATA---[\r\n]*/);
   if (parts.length > 1) {
     description = parts[0];
     try {
