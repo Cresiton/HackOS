@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import {
   Plus, Users, Calendar, ArrowRight, Settings, MessageSquare,
   LayoutGrid, CheckCircle, Clock, Star, ExternalLink, Trash2,
-  Sparkles, RefreshCw, AlertTriangle, AlertCircle, Play, Ban, Shield
+  Sparkles, RefreshCw, AlertTriangle, AlertCircle, Play, Ban, Shield, Loader2
 } from "lucide-react";
 import { Team, Teammate, Hackathon, TeamMember } from "@/types";
 import { toast } from "sonner";
@@ -30,9 +30,8 @@ interface TaskItem {
   assignedName?: string;
 }
 
-function TeamDetailPanel({ team, user, onUpdate, onClose }: { team: any; user: any; onUpdate: () => void; onClose: () => void }) {
+function TeamDetailPanel({ team, user, activeTab, setActiveTab, onUpdate, onClose }: { team: any; user: any; activeTab: string; setActiveTab: (tab: string) => void; onUpdate: () => void; onClose: () => void }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("Overview");
 
   // Kanban state
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -853,6 +852,18 @@ export default function MyTeams() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [loading, setLoading] = useState(true);
 
+  // Lifted tab state
+  const [activeTab, setActiveTab] = useState("Overview");
+
+  // Creation modal states
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategory, setNewCategory] = useState("AI/ML");
+  const [newMaxMembers, setNewMaxMembers] = useState(4);
+  const [newHackathonId, setNewHackathonId] = useState("");
+  const [hackathonsList, setHackathonsList] = useState<any[]>([]);
+
   const loadUserTeams = async () => {
     if (!user) return;
     setLoading(true);
@@ -977,8 +988,85 @@ export default function MyTeams() {
     }
   };
 
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTeamName.trim() || !newHackathonId) {
+      toast.error("Please enter a team name and select a hackathon.");
+      return;
+    }
+    try {
+      const { data: newTeam, error: teamErr } = await supabase
+        .from("teams")
+        .insert({
+          name: newTeamName,
+          description: newDescription,
+          category: newCategory,
+          max_members: newMaxMembers,
+          hackathon_id: newHackathonId,
+          progress: 0,
+          status: "recruiting",
+          color: "#7C5CFF",
+          icon: "🚀"
+        })
+        .select("*")
+        .single();
+      if (teamErr) throw teamErr;
+
+      const { error: memErr } = await supabase
+        .from("team_members")
+        .insert({
+          team_id: newTeam.id,
+          user_id: user?.id,
+          role: "leader"
+        });
+      if (memErr) throw memErr;
+
+      // Create Chat conversation room
+      const { data: newConv } = await supabase
+        .from("conversations")
+        .insert({
+          is_team: true,
+          team_id: newTeam.id
+        })
+        .select("id")
+        .single();
+
+      if (newConv) {
+        await supabase
+          .from("conversation_members")
+          .insert({
+            conversation_id: newConv.id,
+            user_id: user?.id
+          });
+
+        await supabase
+          .from("messages")
+          .insert({
+            conversation_id: newConv.id,
+            sender_id: user?.id,
+            content: `system:${user?.name} created the team.`
+          });
+      }
+
+      toast.success("Team created successfully! 🎉");
+      setShowCreateModal(false);
+      setNewTeamName("");
+      setNewDescription("");
+      setNewMaxMembers(4);
+      loadUserTeams();
+    } catch (err) {
+      console.error("Error creating team:", err);
+      toast.error("Failed to create team.");
+    }
+  };
+
   useEffect(() => {
     loadUserTeams();
+    async function loadHackathons() {
+      const { data } = await supabase.from("hackathons").select("id, title");
+      if (data) setHackathonsList(data);
+    }
+    loadHackathons();
   }, [user]);
 
   const filters = ["All", "Recruiting", "Ready", "Full", "Completed"];
@@ -1007,10 +1095,21 @@ export default function MyTeams() {
           <h1 className="text-white font-800 text-2xl md:text-3xl mb-1">My Teams</h1>
           <p className="text-white/40 text-sm">Review status, manage boards, and chat with your teammates</p>
         </div>
-        <Link to="/create-team" className="hack-btn-primary">
-          <Plus size={16} />
-          Create Team
-        </Link>
+        <div className="flex gap-3">
+          <Link to="/match">
+            <button className="hack-btn-secondary" style={{ border: "1px solid rgba(124,92,255,0.4)", color: "#A78BFF" }}>
+              <Users size={16} />
+              Recruit Members
+            </button>
+          </Link>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="hack-btn-primary"
+          >
+            <Plus size={16} />
+            Create Team
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -1171,10 +1270,100 @@ export default function MyTeams() {
           <TeamDetailPanel
             team={selectedTeam}
             user={user}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
             onUpdate={loadUserTeams}
             onClose={() => setSelectedTeam(null)}
           />
         </>
+      )}
+
+      {/* Create Team Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="hack-card w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-white font-700 text-lg">Create New Team</h2>
+              <button onClick={() => setShowCreateModal(false)} className="text-white/45 hover:text-white/70">✕</button>
+            </div>
+            <form onSubmit={handleCreateTeam} className="space-y-4">
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Team Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. AI resume parser"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  className="hack-input"
+                />
+              </div>
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Description</label>
+                <textarea
+                  placeholder="What is your team building?"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  className="hack-input h-20 resize-none animate-fade-in"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-white/60 text-xs mb-1.5 font-500">Category</label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="hack-input"
+                  >
+                    {["AI/ML", "Web", "GreenTech", "IoT", "FinTech", "EdTech", "Security"].map((c) => (
+                      <option key={c} value={c} style={{ background: "#131826" }}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-white/60 text-xs mb-1.5 font-500">Max Members</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={newMaxMembers}
+                    onChange={(e) => setNewMaxMembers(Number(e.target.value))}
+                    className="hack-input"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-white/60 text-xs mb-1.5 font-500">Select Hackathon *</label>
+                <select
+                  required
+                  value={newHackathonId}
+                  onChange={(e) => setNewHackathonId(e.target.value)}
+                  className="hack-input"
+                >
+                  <option value="" style={{ background: "#131826" }}>-- Choose Event --</option>
+                  {hackathonsList.map((h) => (
+                    <option key={h.id} value={h.id} style={{ background: "#131826" }}>{h.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="hack-btn-secondary flex-1 justify-center py-2.5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="hack-btn-primary flex-1 justify-center py-2.5"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -134,9 +134,9 @@ function Step1BasicInfo({ data, onChange }: { data: any; onChange: (d: any) => v
           className="hack-input"
         >
           <option value="" style={{ background: "#131826" }}>Select your role</option>
-          {["Full Stack Developer", "Frontend Developer", "Backend Developer", "ML Engineer",
-            "UI/UX Designer", "Mobile Developer", "DevOps Engineer", "Data Scientist",
-            "Blockchain Developer", "Student"].map((r) => (
+          {["Full Stack Developer", "Frontend Developer", "Backend Developer", "AI Engineer",
+            "UI Designer", "Mobile Developer", "DevOps Engineer", "Data Scientist",
+            "Blockchain Developer", "Presenter", "Student"].map((r) => (
             <option key={r} value={r} style={{ background: "#131826" }}>{r}</option>
           ))}
         </select>

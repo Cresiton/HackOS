@@ -12,6 +12,7 @@ import aiRobot from "@/assets/ai-robot.png";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Teammate } from "@/types";
+import { Link } from "react-router-dom";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface RoleSuggestion {
@@ -524,20 +525,29 @@ export default function AITeamBuilder() {
   return (
     <div className="p-6 lg:p-8 pb-20">
       {/* Page Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.25), rgba(79,124,255,0.2))", border: "1px solid rgba(124,92,255,0.3)" }}
-        >
-          <Sparkles size={22} className="text-hack-primary" />
-        </div>
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-white font-700 text-2xl">AI Team Builder</h1>
-            <span className="badge-new">Powered by Groq</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.25), rgba(79,124,255,0.2))", border: "1px solid rgba(124,92,255,0.3)" }}
+          >
+            <Sparkles size={22} className="text-hack-primary" />
           </div>
-          <p className="text-white/40 text-sm">Transform your idea into the perfect team composition using AI</p>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-white font-700 text-2xl">AI Team Builder</h1>
+              <span className="badge-new">Powered by Groq</span>
+            </div>
+            <p className="text-white/40 text-sm">Transform your idea into the perfect team composition using AI</p>
+          </div>
         </div>
+        
+        <Link to="/match">
+          <button className="hack-btn-primary py-2.5 px-5" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
+            <Users size={16} />
+            Find Matching Builders
+          </button>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

@@ -584,11 +584,33 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Right Panel */}
       <div
         className="w-80 flex-shrink-0 overflow-y-auto p-5 space-y-5 hidden xl:block"
         style={{ borderLeft: "1px solid rgba(255,255,255,0.06)" }}
       >
+        {/* HackOS Match Feature */}
+        <div
+          className="rounded-2xl p-5 relative overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(19,24,38,0.9))",
+            border: "1px solid rgba(34,197,94,0.2)",
+          }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-700">HackOS Match</h3>
+            <span className="badge-new bg-green-500/20 text-green-400 border-green-500/30">New</span>
+          </div>
+          <p className="text-white/50 text-xs mb-4 leading-relaxed">
+            Discover and recruit amazing developers with our new swipe-based matching experience.
+          </p>
+          <Link to="/match">
+            <button className="hack-btn-primary w-full justify-center py-2.5" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
+              Find Teammates
+              <ArrowRight size={14} />
+            </button>
+          </Link>
+        </div>
+
         {/* AI Team Builder */}
         <div
           className="rounded-2xl p-5 relative overflow-hidden"
