@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Clock, Loader2 } from "lucide-react";
 import { matchService, MatchProfile } from "@/lib/matchService";
+import { matchHistoryService } from "@/lib/matchHistoryService";
 import MatchModeSelector, { MatchMode } from "@/components/hackos-match/MatchModeSelector";
 import MatchPreferences, { MatchFilters } from "@/components/hackos-match/MatchPreferences";
 import SwipeDeck from "@/components/hackos-match/SwipeDeck";
@@ -14,10 +15,18 @@ type Step = "mode" | "preferences" | "deck" | "history" | "limit_reached" | "loa
 export default function HackOSMatch() {
   const { user } = useAuth();
   const [step, setStep] = useState<Step>("loading");
+  const [stepHistory, setStepHistory] = useState<Step[]>([]);
   const [mode, setMode] = useState<MatchMode>("find_teammates");
   const [filters, setFilters] = useState<MatchFilters | null>(null);
   const [profiles, setProfiles] = useState<MatchProfile[]>([]);
   const [mutualMatch, setMutualMatch] = useState<MatchProfile | null>(null);
+
+  const changeStep = (newStep: Step, bypassHistory: boolean = false) => {
+    if (!bypassHistory && step !== "loading" && step !== newStep) {
+      setStepHistory(prev => [...prev, step]);
+    }
+    setStep(newStep);
+  };
 
   useEffect(() => {
     async function init() {
@@ -34,7 +43,7 @@ export default function HackOSMatch() {
 
   const handleModeSelect = (selectedMode: MatchMode) => {
     setMode(selectedMode);
-    setStep("preferences");
+    changeStep("preferences");
   };
 
   const handlePreferencesComplete = (selectedFilters: MatchFilters | null) => {
@@ -45,6 +54,7 @@ export default function HackOSMatch() {
   const loadDeck = async (filtersToApply: MatchFilters | null) => {
     if (!user) return;
     
+    setStepHistory(prev => [...prev, step]);
     setStep("loading");
     const limitReached = await matchService.hasReachedDailyLimit(user.id);
     if (limitReached) {
@@ -83,7 +93,7 @@ export default function HackOSMatch() {
     const limitReached = await matchService.hasReachedDailyLimit(user.id);
     if (limitReached) {
       setTimeout(() => {
-        if (!mutualMatch) setStep("limit_reached");
+        if (!mutualMatch) changeStep("limit_reached");
       }, 500); 
     }
   };
@@ -94,13 +104,30 @@ export default function HackOSMatch() {
     toast.success(`${profile.name} saved for later.`);
   };
 
-  const handleInvite = (profile: MatchProfile) => {
-    // In a real app, open modal here
-    toast.success(`Invitation sent to ${profile.name}!`);
+  const handleInvite = async (profile: MatchProfile) => {
+    if (!user) return;
+    toast.loading(`Sending team invitation to ${profile.name}...`, { id: "match-invite" });
+    try {
+      const inviteResult = await matchHistoryService.sendTeammateInvitation(
+        user.id,
+        profile.id,
+        profile.role
+      );
+      toast.dismiss("match-invite");
+      if (inviteResult) {
+        toast.success(`Invitation sent to ${profile.name}!`);
+      } else {
+        toast.error(`Could not send invitation to ${profile.name}.`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.dismiss("match-invite");
+      toast.error(`Error sending invitation.`);
+    }
   };
 
   const handleDeckEmpty = () => {
-    setStep("limit_reached");
+    changeStep("limit_reached");
   };
 
   const handleContinueAfterMatch = async () => {
@@ -108,7 +135,7 @@ export default function HackOSMatch() {
     setMutualMatch(null);
     const limitReached = await matchService.hasReachedDailyLimit(user.id);
     if (limitReached || profiles.length === 1) {
-       setStep("limit_reached");
+       changeStep("limit_reached");
     }
   };
 
@@ -130,9 +157,13 @@ export default function HackOSMatch() {
       <div className="w-full max-w-5xl mx-auto px-4 flex justify-between items-center mb-8 relative z-10">
         <button 
           onClick={() => {
-            if (step === "deck" || step === "history" || step === "limit_reached") setStep("mode");
-            else if (step === "preferences") setStep("mode");
-            else window.history.back();
+            if (stepHistory.length > 0) {
+              const prevStep = stepHistory[stepHistory.length - 1];
+              setStepHistory(prev => prev.slice(0, -1));
+              setStep(prevStep);
+            } else {
+              window.history.back();
+            }
           }}
           className="p-2 bg-white/5 rounded-full border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-all"
         >
@@ -142,7 +173,7 @@ export default function HackOSMatch() {
         <div className="flex gap-4 items-center">
           {(step === "deck" || step === "limit_reached") && (
             <button 
-              onClick={() => setStep("history")}
+              onClick={() => changeStep("history")}
               className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 text-sm font-medium transition flex items-center gap-2"
             >
               <Clock size={16} />
@@ -189,7 +220,7 @@ export default function HackOSMatch() {
               You've explored all of today's recommendations. Quality connections take time. Come back tomorrow for new matches!
             </p>
             <button 
-              onClick={() => setStep("history")}
+              onClick={() => changeStep("history")}
               className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium rounded-xl transition-all mb-3"
             >
               View History

@@ -166,3 +166,103 @@ export async function getAIInsight(topic: string, context: string): Promise<stri
 
   return callGroq(messages);
 }
+
+export interface SearchQueryAnalysis {
+  expandedKeywords: string[];
+  preferredRoles: string[];
+  preferredSkills: string[];
+  domains: string[];
+  isAiFocused: boolean;
+  isCybersecurityFocused: boolean;
+  isFlutterFocused: boolean;
+  strictExclusions: string[];
+  intentDescription: string;
+  aiSuggestions: string[];
+}
+
+export async function analyzeSearchQuery(query: string): Promise<SearchQueryAnalysis> {
+  if (!query || !query.trim()) {
+    return {
+      expandedKeywords: [],
+      preferredRoles: [],
+      preferredSkills: [],
+      domains: [],
+      isAiFocused: false,
+      isCybersecurityFocused: false,
+      isFlutterFocused: false,
+      strictExclusions: [],
+      intentDescription: "",
+      aiSuggestions: []
+    };
+  }
+
+  const messages: GroqMessage[] = [
+    {
+      role: "system",
+      content: `You are the HackOS Search Intent Analyzer. Your task is to analyze user search queries and extract semantic context.
+Always respond with valid JSON only, no markdown, no explainers, no extra text.
+Exclusion rules:
+- If a query focuses on AI/ML (artificial intelligence, machine learning, data science, deep learning, NLP, computer vision, etc.), flag isAiFocused: true and identify roles/skills to search. Strict exclusion: exclude UI/UX Designer, Frontend Developer, Backend Developer, or Mobile Developer unless they explicitly mention strong AI/ML experience or skills in their bio/skills list.
+- Similarly, flag isCybersecurityFocused: true if searching for Cybersecurity, security, hacking, ethical hacking, etc.
+- Similarly, flag isFlutterFocused: true if searching for Flutter, dart, mobile hybrid, etc.
+JSON Format:
+{
+  "expandedKeywords": ["synonym1", "related_tech1"],
+  "preferredRoles": ["Role 1", "Role 2"],
+  "preferredSkills": ["Skill 1", "Skill 2"],
+  "domains": ["Domain1"],
+  "isAiFocused": true,
+  "isCybersecurityFocused": false,
+  "isFlutterFocused": false,
+  "strictExclusions": ["UI/UX Designer", "Frontend Developer", "Mobile Developer"],
+  "intentDescription": "Brief summary of user search intent",
+  "aiSuggestions": ["Suggestion 1", "Suggestion 2", "Suggestion 3"]
+}`
+    },
+    {
+      role: "user",
+      content: `Analyze this search query: "${query}"`
+    }
+  ];
+
+  try {
+    const response = await callGroq(messages);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in Groq response");
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      expandedKeywords: Array.isArray(parsed.expandedKeywords) ? parsed.expandedKeywords.map((k: any) => String(k).toLowerCase()) : [],
+      preferredRoles: Array.isArray(parsed.preferredRoles) ? parsed.preferredRoles : [],
+      preferredSkills: Array.isArray(parsed.preferredSkills) ? parsed.preferredSkills : [],
+      domains: Array.isArray(parsed.domains) ? parsed.domains : [],
+      isAiFocused: !!parsed.isAiFocused,
+      isCybersecurityFocused: !!parsed.isCybersecurityFocused,
+      isFlutterFocused: !!parsed.isFlutterFocused,
+      strictExclusions: Array.isArray(parsed.strictExclusions) ? parsed.strictExclusions : [],
+      intentDescription: parsed.intentDescription || "",
+      aiSuggestions: Array.isArray(parsed.aiSuggestions) ? parsed.aiSuggestions : []
+    };
+  } catch (error) {
+    console.error("Groq search intent analysis failed, using fallback:", error);
+    const q = query.toLowerCase();
+    const isAi = q.includes("ai") || q.includes("machine learning") || q.includes("ml") || q.includes("deep learning") || q.includes("nlp") || q.includes("vision");
+    const isCyber = q.includes("cyber") || q.includes("security") || q.includes("pentest") || q.includes("ethical");
+    const isFlutter = q.includes("flutter") || q.includes("dart");
+    return {
+      expandedKeywords: isAi ? ["machine learning", "deep learning", "nlp", "computer vision", "generative ai", "llms"] : 
+                         (isCyber ? ["cybersecurity", "security", "penetration testing", "firewall", "ethical hacking"] : []),
+      preferredRoles: isAi ? ["ML Engineer", "AI Engineer", "Data Scientist"] : 
+                      (isCyber ? ["Security Engineer", "Security Analyst"] : []),
+      preferredSkills: isAi ? ["Python", "TensorFlow", "PyTorch", "NLP"] : 
+                       (isCyber ? ["Pentesting", "Network Security", "Cryptography"] : []),
+      domains: isAi ? ["AI"] : (isCyber ? ["Cybersecurity"] : []),
+      isAiFocused: isAi,
+      isCybersecurityFocused: isCyber,
+      isFlutterFocused: isFlutter,
+      strictExclusions: isAi ? ["UI/UX Designer", "Frontend Developer", "Mobile Developer"] : [],
+      intentDescription: `Searching for ${query}`,
+      aiSuggestions: isAi ? ["AI Engineer", "Machine Learning Engineer", "Generative AI", "Computer Vision", "NLP"] : 
+                     (isCyber ? ["Cybersecurity Analyst", "Security Engineer", "Penetration Tester"] : [])
+    };
+  }
+}

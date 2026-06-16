@@ -7,6 +7,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import GitHubAnalyticsCard from "@/components/features/GitHubAnalyticsCard";
+import { matchHistoryService } from "@/lib/matchHistoryService";
 
 function TrustRing({ score, user }: { score: number; user: any }) {
   const size = 80;
@@ -160,7 +161,7 @@ export default function PublicProfilePage() {
 
         // Hackathons
         const hackIds = teams.map((t: any) => t.hackathon_id).filter(Boolean);
-        let registeredHackathons = [];
+        let registeredHackathons: any[] = [];
         if (hackIds.length > 0) {
           const { data: hacksData } = await supabase
             .from("hackathons")
@@ -178,6 +179,10 @@ export default function PublicProfilePage() {
           teamsJoined: teams,
           hackathons: registeredHackathons
         });
+
+        if (currentUser) {
+          matchHistoryService.logActivity(currentUser.id, "Profile Viewed", p.id, p.name, p.role || "Developer");
+        }
       } catch (err) {
         console.error(err);
         navigate("/404", { replace: true });

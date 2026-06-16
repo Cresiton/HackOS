@@ -79,6 +79,26 @@ export const matchService = {
       return { success: false, isMutual: false };
     }
 
+    // Dynamic import to log swipe action and auto-invite if interested
+    try {
+      const { data: p } = await supabase.from('profiles').select('name, role').eq('id', targetUserId).maybeSingle();
+      const targetName = p?.name || 'Builder';
+      const targetRole = p?.role || 'Developer';
+      const { matchHistoryService } = await import("./matchHistoryService");
+
+      if (action === "interested") {
+        // Log interest
+        matchHistoryService.logActivity(userId, "Profile Viewed", targetUserId, targetName, targetRole);
+        // Auto-invite (creates team request)
+        await matchHistoryService.sendTeammateInvitation(userId, targetUserId, targetRole);
+      } else {
+        // Profile skip action
+        matchHistoryService.logActivity(userId, "Profile Viewed", targetUserId, targetName, targetRole);
+      }
+    } catch (e) {
+      console.error("Error in swipe logging/invitation:", e);
+    }
+
     let isMutual = false;
     if (action === "interested") {
       const { data: mutualSwipe } = await supabase
@@ -108,7 +128,21 @@ export const matchService = {
       .from('match_saves')
       .upsert({ user_id: userId, target_id: targetUserId }, { onConflict: 'user_id, target_id' });
     
-    if (error) console.error("Error saving profile:", error);
+    if (error) {
+      console.error("Error saving profile:", error);
+      return;
+    }
+
+    // Log profile favorited/saved
+    try {
+      const { data: p } = await supabase.from('profiles').select('name, role').eq('id', targetUserId).maybeSingle();
+      const targetName = p?.name || 'Builder';
+      const targetRole = p?.role || 'Developer';
+      const { matchHistoryService } = await import("./matchHistoryService");
+      matchHistoryService.logActivity(userId, "Profile Favorited", targetUserId, targetName, targetRole);
+    } catch (e) {
+      console.error("Error in save profile logging:", e);
+    }
   },
 
   async getSavedProfiles(userId: string): Promise<string[]> {

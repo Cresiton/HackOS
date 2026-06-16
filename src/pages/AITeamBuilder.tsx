@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Teammate } from "@/types";
 import { Link } from "react-router-dom";
+import { matchHistoryService } from "@/lib/matchHistoryService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface RoleSuggestion {
@@ -138,7 +139,7 @@ function RoleCard({
   index: number;
   onRemove: () => void;
   candidates: Teammate[];
-  onInvite: (name: string) => void;
+  onInvite: (candidate: Teammate, roleName?: string) => void;
 }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -259,7 +260,7 @@ function RoleCard({
                   {candidate.matchScore}%
                 </div>
                 <button
-                  onClick={() => onInvite(candidate.name)}
+                  onClick={() => onInvite(candidate, role.role)}
                   className="text-[10px] px-2.5 py-1 rounded-lg font-600 transition-all"
                   style={{ background: "rgba(124,92,255,0.2)", color: "#A78BFF" }}
                 >
@@ -529,7 +530,31 @@ export default function AITeamBuilder() {
       .sort((a, b) => b.matchScore - a.matchScore);
   };
 
-  const handleInvite = (name: string) => toast.success(`Invite sent to ${name}!`);
+  const handleInvite = async (candidate: Teammate, roleName?: string) => {
+    if (!user) {
+      toast.error("You must be logged in to send invitations.");
+      return;
+    }
+    const targetRole = roleName || candidate.role || "Developer";
+    toast.loading(`Sending team invitation to ${candidate.name}...`, { id: "ai-invite" });
+    try {
+      const inviteResult = await matchHistoryService.sendTeammateInvitation(
+        user.id,
+        candidate.id,
+        targetRole
+      );
+      toast.dismiss("ai-invite");
+      if (inviteResult) {
+        toast.success(`Invitation sent to ${candidate.name}!`);
+      } else {
+        toast.error(`Could not send invitation to ${candidate.name}.`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.dismiss("ai-invite");
+      toast.error(`Error sending invitation: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
 
   return (
     <div className="p-6 lg:p-8 pb-20">
@@ -909,7 +934,7 @@ export default function AITeamBuilder() {
                           {candidate.matchScore}% match
                         </div>
                         <button
-                          onClick={() => handleInvite(candidate.name)}
+                          onClick={() => handleInvite(candidate)}
                           className="text-[10px] px-3 py-1.5 rounded-lg font-600 flex items-center gap-1 transition-all"
                           style={{ background: "rgba(124,92,255,0.15)", color: "#A78BFF" }}
                         >
