@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import HackathonRegistrationModal from "@/components/features/HackathonRegistrationModal";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Search, Bookmark, Share2, Clock, Users,
-  Trophy, Grid, List, Calendar
+  Trophy, Grid, List
 } from "lucide-react";
+import { FEATURED_HACKATHONS } from "@/lib/mockData";
 import { Hackathon } from "@/types";
-import { supabase } from "@/lib/supabase";
-import { deserializeHackathon } from "@/lib/utils";
 
 const FILTERS = {
   mode: ["All", "Online", "Offline", "Hybrid"],
@@ -17,7 +16,6 @@ const FILTERS = {
 
 function HackathonCard({ hack }: { hack: Hackathon }) {
   const [bookmarked, setBookmarked] = useState(false);
-  const navigate = useNavigate();
 
   return (
     <Link to={`/hackathon/${hack.id}`} className="block">
@@ -27,13 +25,10 @@ function HackathonCard({ hack }: { hack: Hackathon }) {
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
           {/* Badges */}
-          <div className="absolute top-3 left-3 flex gap-2 flex-wrap items-center">
+          <div className="absolute top-3 left-3 flex gap-2">
             {hack.featured && <span className="featured-tag">Featured</span>}
             <span className={`tag ${hack.mode === "Online" ? "online-tag" : hack.mode === "Offline" ? "offline-tag" : ""}`}>
               {hack.mode}
-            </span>
-            <span className="text-xs font-500 px-2.5 py-1 rounded-lg bg-hack-primary/20 text-[#A78BFF] border border-hack-primary/30">
-              {hack.category || "General"}
             </span>
           </div>
 
@@ -72,26 +67,20 @@ function HackathonCard({ hack }: { hack: Hackathon }) {
           )}
         </div>
 
-        <div className="p-5 space-y-3">
-          <div>
+        <div className="p-5">
+          <div className="flex items-start justify-between mb-2">
             <h3 className="text-white font-700 text-base leading-snug flex-1 pr-2">{hack.title}</h3>
-            <span className="text-white/40 text-xs">by {hack.organizer}</span>
           </div>
+          <p className="text-white/40 text-xs leading-relaxed mb-3 line-clamp-2">{hack.description}</p>
 
-          <p className="text-white/40 text-xs leading-relaxed line-clamp-2">{hack.description}</p>
-
-          <div className="grid grid-cols-2 gap-2 text-white/50 text-xs bg-white/2 p-2.5 rounded-xl border border-white/5">
-            <div className="flex items-center gap-1.5">
-              <Users size={12} className="text-hack-primary" />
-              <span>Size: {hack.teamSize || "2-4"}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Calendar size={12} className="text-hack-orange" />
-              <span className="truncate">Deadline: {hack.registrationDeadline}</span>
+          <div className="flex items-center gap-2 text-white/40 text-xs mb-3">
+            <div className="flex items-center gap-1">
+              <Users size={11} />
+              <span>{hack.organizer}</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 mb-4">
             {hack.tags.map((tag) => (
               <span key={tag} className="tag">{tag}</span>
             ))}
@@ -115,14 +104,10 @@ function HackathonCard({ hack }: { hack: Hackathon }) {
           </div>
 
           <button
-            className="hack-btn-primary w-full justify-center py-2.5"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              navigate(`/register-hackathon/${hack.id}`);
-            }}
+            className="hack-btn-primary w-full justify-center mt-4 py-2.5"
+            onClick={(e) => { e.preventDefault(); openRegistration(e, hack); }}
           >
-            Register
+            Register Now
           </button>
         </div>
       </div>
@@ -135,52 +120,30 @@ export default function DiscoverHackathons() {
   const [modeFilter, setModeFilter] = useState("All");
   const [difficultyFilter, setDifficultyFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [selectedCategory, setSelectedCategory] = useState("All Hackathons");
+  const [selectedHack, setSelectedHack] = useState<Hackathon | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
 
-  const [dbHackathons, setDbHackathons] = useState<Hackathon[]>([]);
+  const openRegistration = (e: React.MouseEvent, hack: Hackathon) => {
+    e.preventDefault();
+    setSelectedHack(hack);
+    setRegistrationOpen(true);
+  };
 
-  useEffect(() => {
-    async function loadHackathons() {
-      try {
-        const { data, error } = await supabase
-          .from("hackathons")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        if (data) {
-          setDbHackathons(data.map(deserializeHackathon));
-        }
-      } catch (err) {
-        console.error("Error loading hackathons from Supabase:", err);
-      }
-    }
-    loadHackathons();
-  }, []);
-
-  const filtered = dbHackathons.filter((h) => {
+  const filtered = FEATURED_HACKATHONS.filter((h) => {
     const matchSearch = !search ||
       h.title.toLowerCase().includes(search.toLowerCase()) ||
       h.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
     const matchMode = modeFilter === "All" || h.mode === modeFilter;
     const matchDiff = difficultyFilter === "All" || h.difficulty === difficultyFilter;
-    const matchCat = selectedCategory === "All Hackathons" || h.category === selectedCategory;
-    return matchSearch && matchMode && matchDiff && matchCat;
+    return matchSearch && matchMode && matchDiff;
   });
 
   return (
     <div className="p-6 lg:p-8 pb-20">
       {/* Header */}
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-white font-700 text-2xl mb-1">Discover Hackathons</h1>
-          <p className="text-white/40 text-sm">Find your next competition from 850+ active hackathons</p>
-        </div>
-        <Link to="/match">
-          <button className="hack-btn-primary py-2.5 px-5" style={{ background: "linear-gradient(135deg, #22C55E, #16A34A)", borderColor: "#15803D" }}>
-            <Users size={16} />
-            Match with Participants
-          </button>
-        </Link>
+      <div className="mb-8">
+        <h1 className="text-white font-700 text-2xl mb-1">Discover Hackathons</h1>
+        <p className="text-white/40 text-sm">Find your next competition from 850+ active hackathons</p>
       </div>
 
       {/* Search & Filters */}
@@ -230,23 +193,19 @@ export default function DiscoverHackathons() {
 
       {/* Category Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto scrollbar-hide">
-        {["All Hackathons", "AI & ML", "Web Dev", "Mobile", "Blockchain", "Sustainability", "HealthTech", "FinTech"].map((cat) => {
-          const isActive = selectedCategory === cat;
-          return (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className="px-4 py-2 rounded-xl text-sm font-500 whitespace-nowrap transition-all flex-shrink-0"
-              style={{
-                background: isActive ? "rgba(124,92,255,0.15)" : "rgba(255,255,255,0.04)",
-                color: isActive ? "#A78BFF" : "rgba(255,255,255,0.45)",
-                border: `1px solid ${isActive ? "rgba(124,92,255,0.25)" : "rgba(255,255,255,0.07)"}`,
-              }}
-            >
-              {cat}
-            </button>
-          );
-        })}
+        {["All Hackathons", "AI & ML", "Web Dev", "Mobile", "Blockchain", "Sustainability", "HealthTech", "FinTech"].map((cat) => (
+          <button
+            key={cat}
+            className="px-4 py-2 rounded-xl text-sm font-500 whitespace-nowrap transition-all flex-shrink-0"
+            style={{
+              background: cat === "All Hackathons" ? "rgba(124,92,255,0.15)" : "rgba(255,255,255,0.04)",
+              color: cat === "All Hackathons" ? "#A78BFF" : "rgba(255,255,255,0.45)",
+              border: `1px solid ${cat === "All Hackathons" ? "rgba(124,92,255,0.25)" : "rgba(255,255,255,0.07)"}`,
+            }}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
 
       {/* Results Count */}
@@ -268,12 +227,17 @@ export default function DiscoverHackathons() {
       {/* Grid */}
       <div className={`grid gap-5 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1"}`}>
         {filtered.map((hack) => (
-          <HackathonCard
-            key={hack.id}
-            hack={hack}
-          />
+          <HackathonCard key={hack.id} hack={hack} />
         ))}
       </div>
+
+      {selectedHack && (
+        <HackathonRegistrationModal
+          hack={selectedHack}
+          isOpen={registrationOpen}
+          onClose={() => { setRegistrationOpen(false); setSelectedHack(null); }}
+        />
+      )}
 
       {filtered.length === 0 && (
         <div className="text-center py-20">

@@ -1,20 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Supabase credentials missing in environment variables.");
-}
-
-export const supabase = createClient(
-  supabaseUrl || "https://dsdaqwttyrwvvkjtljyd.supabase.co",
-  supabaseAnonKey || "sb_publishable_TzXVzrzEWRATj8o5nKeP1Q_dVZ19lll",
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+// If env vars are missing (no backend connected), create a stub client that
+// returns empty results rather than crashing at import time.
+export const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : createClient("https://placeholder.supabase.co", "placeholder-anon-key");

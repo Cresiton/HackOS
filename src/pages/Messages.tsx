@@ -1,19 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Search, Send, Phone, Video, MoreHorizontal, Paperclip,
-  Smile, Pin, Check, CheckCheck, ArrowLeft, X,
-  Users, MessageSquare, ChevronDown, Info
+  Smile, Pin, Check, CheckCheck, Circle, ArrowLeft, X,
+  Users, MessageSquare, Image as ImageIcon, Mic, AtSign,
+  ChevronDown, Star
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage {
   id: string;
   sender: "me" | "them";
-  senderId?: string;
   senderName?: string;
   senderAvatar?: string;
   text: string;
@@ -31,16 +27,127 @@ interface Conversation {
   unread: number;
   isOnline: boolean;
   isTeam: boolean;
-  teamId?: string;
-  otherUserId?: string;
   avatar?: string;
   icon?: string;
-  color?: string;
   pinned?: boolean;
   typing?: boolean;
 }
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const EMOJI_LIST = ["👍", "❤️", "😂", "🔥", "🚀", "💯", "✅", "🎉", "👏", "😮"];
+
+const ALL_CONVERSATIONS: Conversation[] = [
+  {
+    id: "c1",
+    name: "Rahul Kumar",
+    lastMessage: "We need an ML Engineer urgently. You'd be a 95% match!",
+    time: "10:30 AM",
+    unread: 2,
+    isOnline: true,
+    isTeam: false,
+    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul&backgroundColor=c0aede",
+    pinned: true,
+  },
+  {
+    id: "c2",
+    name: "AI Resume Screener",
+    lastMessage: "Priya: Just pushed the ML model update 🚀",
+    time: "9:45 AM",
+    unread: 3,
+    isOnline: true,
+    isTeam: true,
+    icon: "🤖",
+    pinned: true,
+  },
+  {
+    id: "c3",
+    name: "Ananya Singh",
+    lastMessage: "Check out this cool AI paper I found!",
+    time: "Yesterday",
+    unread: 0,
+    isOnline: true,
+    isTeam: false,
+    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya&backgroundColor=ffd5dc",
+  },
+  {
+    id: "c4",
+    name: "GreenConnect Team",
+    lastMessage: "You: Working on the sustainability module",
+    time: "Mon",
+    unread: 0,
+    isOnline: false,
+    isTeam: true,
+    icon: "🌱",
+  },
+  {
+    id: "c5",
+    name: "Ishita Das",
+    lastMessage: "The Figma designs are ready! Check them out 🎨",
+    time: "Sun",
+    unread: 0,
+    isOnline: false,
+    isTeam: false,
+    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ishita&backgroundColor=d1f7c4",
+  },
+  {
+    id: "c6",
+    name: "Devansh Verma",
+    lastMessage: "Can you review my backend PR?",
+    time: "Sat",
+    unread: 0,
+    isOnline: true,
+    isTeam: false,
+    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=devansh&backgroundColor=ffdfbf",
+  },
+  {
+    id: "c7",
+    name: "PrepHub Team",
+    lastMessage: "Kiran: Deployment done ✓",
+    time: "Fri",
+    unread: 0,
+    isOnline: false,
+    isTeam: true,
+    icon: "📚",
+  },
+];
+
+const INITIAL_CHAT_MESSAGES: Record<string, ChatMessage[]> = {
+  c1: [
+    { id: "1", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "Hey! Are you available for the hackathon next week?", time: "10:20 AM", date: "today", status: "seen" },
+    { id: "2", sender: "me", text: "Hey Rahul! Yes, I'm free. Which hackathon?", time: "10:22 AM", date: "today", status: "seen" },
+    { id: "3", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "AI Innovation Challenge! From Jun 20-22. Total prize pool ₹1 Lakh 🔥", time: "10:23 AM", date: "today", status: "seen" },
+    { id: "4", sender: "me", text: "That sounds amazing! I've been working on some ML models recently. What roles does your team need?", time: "10:25 AM", date: "today", status: "seen" },
+    { id: "5", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "We need an ML Engineer urgently. Our backend and frontend are covered.", time: "10:27 AM", date: "today", status: "seen" },
+    { id: "6", sender: "them", senderName: "Rahul Kumar", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul", text: "You'd be a 95% match! Let me know ASAP, registration closes tomorrow 🚀", time: "10:30 AM", date: "today", status: "seen" },
+  ],
+  c2: [
+    { id: "1", sender: "them", senderName: "Priya K", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=priya", text: "Team sync today at 6pm? We need to review the architecture.", time: "8:00 AM", date: "today", status: "seen" },
+    { id: "2", sender: "me", text: "Sure! I'll be there. Should I prep the demo flow?", time: "8:15 AM", date: "today", status: "seen" },
+    { id: "3", sender: "them", senderName: "Rahul M", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahulm", text: "Frontend is 80% done. Just need the API endpoints.", time: "9:00 AM", date: "today", status: "seen" },
+    { id: "4", sender: "them", senderName: "Priya K", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=priya", text: "Just pushed the ML model update 🚀", time: "9:45 AM", date: "today", status: "seen" },
+  ],
+  c3: [
+    { id: "1", sender: "them", senderName: "Ananya Singh", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya", text: "Hey! Great work at the last hackathon btw.", time: "3:00 PM", date: "yesterday", status: "seen" },
+    { id: "2", sender: "me", text: "Thanks! Your ML model was the real star 😄", time: "3:30 PM", date: "yesterday", status: "seen" },
+    { id: "3", sender: "them", senderName: "Ananya Singh", senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=ananya", text: "Check out this cool AI paper I found!", time: "4:00 PM", date: "yesterday", status: "seen" },
+  ],
+};
+
+// ─── localStorage helpers ──────────────────────────────────────────────────────
+function loadMessages(convId: string): ChatMessage[] {
+  try {
+    const stored = localStorage.getItem(`hackos_chat_${convId}`);
+    return stored ? JSON.parse(stored) : INITIAL_CHAT_MESSAGES[convId] || [];
+  } catch {
+    return INITIAL_CHAT_MESSAGES[convId] || [];
+  }
+}
+
+function saveMessages(convId: string, messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(`hackos_chat_${convId}`, JSON.stringify(messages));
+  } catch {}
+}
 
 // ─── ConvItem ─────────────────────────────────────────────────────────────────
 function ConvItem({
@@ -67,17 +174,14 @@ function ConvItem({
       <div className="relative flex-shrink-0">
         {conv.avatar ? (
           <div className="w-10 h-10 rounded-full overflow-hidden bg-hack-primary/20">
-            <img src={conv.avatar} alt={conv.name} className="w-full h-full object-cover" />
+            <img src={conv.avatar} alt={conv.name} className="w-full h-full" />
           </div>
         ) : (
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
-            style={{
-              background: `${conv.color || "#7C5CFF"}15`,
-              border: `1px solid ${conv.color || "#7C5CFF"}25`
-            }}
+            style={{ background: "rgba(124,92,255,0.12)", border: "1px solid rgba(124,92,255,0.15)" }}
           >
-            {conv.icon || "🎯"}
+            {conv.icon}
           </div>
         )}
         {conv.isOnline && (
@@ -90,13 +194,13 @@ function ConvItem({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-0.5">
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5">
             <span className={`text-sm font-${conv.unread > 0 ? "700" : "500"} truncate`} style={{ color: conv.unread > 0 ? "white" : "rgba(255,255,255,0.7)" }}>
               {conv.name}
             </span>
             {conv.pinned && <Pin size={9} className="text-white/25 flex-shrink-0" />}
             {conv.isTeam && (
-              <span className="text-[8px] px-1.5 py-0.5 rounded-md font-600 flex-shrink-0" style={{ background: "rgba(79,124,255,0.12)", color: "#7BA5FF" }}>
+              <span className="text-[8px] px-1.5 py-0.5 rounded-md font-600" style={{ background: "rgba(79,124,255,0.12)", color: "#7BA5FF" }}>
                 Team
               </span>
             )}
@@ -131,14 +235,15 @@ function ConvItem({
 // ─── MessageBubble ─────────────────────────────────────────────────────────────
 function MessageBubble({
   msg,
+  isLast,
   showAvatar,
+  prevMsg,
 }: {
   msg: ChatMessage;
   isLast: boolean;
   showAvatar: boolean;
   prevMsg?: ChatMessage;
 }) {
-  const navigate = useNavigate();
   const isMe = msg.sender === "me";
   const [showReactions, setShowReactions] = useState(false);
   const [reactions, setReactions] = useState<string[]>(msg.reactions || []);
@@ -150,17 +255,6 @@ function MessageBubble({
     setShowReactions(false);
   };
 
-  if (msg.text.startsWith("system:")) {
-    const systemText = msg.text.replace(/^system:/, "").trim();
-    return (
-      <div className="flex justify-center my-3 w-full">
-        <div className="px-4 py-1.5 rounded-full text-[11px] font-500 text-white/40 bg-white/5 border border-white/5">
-          {systemText}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       className={`flex items-end gap-2 group ${isMe ? "flex-row-reverse" : "flex-row"}`}
@@ -169,11 +263,8 @@ function MessageBubble({
       {!isMe && (
         <div className="w-7 h-7 flex-shrink-0 mb-1">
           {showAvatar && msg.senderAvatar ? (
-            <div 
-              onClick={() => msg.senderId && navigate(`/profile/${msg.senderId}`)}
-              className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
-            >
-              <img src={msg.senderAvatar} alt="" className="w-full h-full object-cover" />
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20">
+              <img src={msg.senderAvatar} alt="" className="w-full h-full" />
             </div>
           ) : null}
         </div>
@@ -209,7 +300,7 @@ function MessageBubble({
           {/* Hover reactions trigger */}
           <button
             onClick={() => setShowReactions(!showReactions)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-1/2 -translate-y-1/2 p-1 rounded-full"
+            className="absolute opacity-0 group-hover:opacity-100 transition-opacity top-1/2 -translate-y-1/2 p-1 rounded-full"
             style={{
               [isMe ? "left" : "right"]: "-28px",
               background: "rgba(255,255,255,0.06)",
@@ -266,6 +357,8 @@ function MessageBubble({
             <span>
               {msg.status === "seen" ? (
                 <CheckCheck size={11} className="text-hack-blue" />
+              ) : msg.status === "delivered" ? (
+                <CheckCheck size={11} className="text-white/30" />
               ) : (
                 <Check size={11} className="text-white/30" />
               )}
@@ -293,36 +386,55 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
+// ─── Typing Indicator ─────────────────────────────────────────────────────────
+function TypingIndicator({ name }: { name: string }) {
+  return (
+    <div className="flex items-end gap-2">
+      <div className="w-7 h-7 rounded-full bg-hack-primary/20 flex-shrink-0" />
+      <div className="flex flex-col gap-1">
+        <div
+          className="px-4 py-3 rounded-2xl rounded-bl-sm flex items-center gap-1"
+          style={{ background: "rgba(255,255,255,0.07)" }}
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full animate-bounce"
+              style={{ background: "rgba(255,255,255,0.5)", animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
+        </div>
+        <span className="text-white/25 text-[9px] ml-1">{name} is typing...</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Messages Component ──────────────────────────────────────────────────
 export default function Messages() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [allMessages, setAllMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [conversations, setConversations] = useState<Conversation[]>(ALL_CONVERSATIONS);
+  const [selectedId, setSelectedId] = useState<string>("c1");
+  const [allMessages, setAllMessages] = useState<Record<string, ChatMessage[]>>(() => {
+    const initial: Record<string, ChatMessage[]> = {};
+    ALL_CONVERSATIONS.forEach((c) => {
+      initial[c.id] = loadMessages(c.id);
+    });
+    return initial;
+  });
   const [messageInput, setMessageInput] = useState("");
   const [search, setSearch] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [scrolledUp, setScrolledUp] = useState(false);
-  const [loading, setLoading] = useState(true);
-  
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
-  const [typingUsers, setTypingUsers] = useState<Record<string, NodeJS.Timeout>>({});
-  const typingChannelRef = useRef<any>(null);
-
-  // Collapsible Team Info Panel
-  const [showTeamPanel, setShowTeamPanel] = useState(true);
-  const [teamMembersList, setTeamMembersList] = useState<any[]>([]);
-  const [teamDetails, setTeamDetails] = useState<any | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const selectedConv = conversations.find((c) => c.id === selectedId);
-  const currentMessages = selectedId ? (allMessages[selectedId] || []) : [];
+  const selectedConv = conversations.find((c) => c.id === selectedId)!;
+  const currentMessages = allMessages[selectedId] || [];
 
   // Scroll to bottom
   const scrollToBottom = useCallback((smooth = true) => {
@@ -331,602 +443,98 @@ export default function Messages() {
 
   useEffect(() => {
     scrollToBottom(false);
-  }, [selectedId, scrollToBottom]);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!scrolledUp) scrollToBottom();
-  }, [currentMessages, scrolledUp, scrollToBottom]);
+  }, [currentMessages, scrolledUp]);
 
-  // Mark messages as seen in DB and local state
-  const markMessagesAsSeen = async (convoId: string) => {
-    if (!convoId || !user) return;
-    try {
-      const { data: unreadMsgs } = await supabase
-        .from("messages")
-        .select("id, is_seen, content")
-        .eq("conversation_id", convoId)
-        .neq("sender_id", user.id);
-
-      if (unreadMsgs) {
-        // Support both old hack and new schema
-        const unseen = unreadMsgs.filter(m => !m.is_seen && !(m.content || "").endsWith("\n\n---SEEN---"));
-        if (unseen.length > 0) {
-          const promises = unseen.map(m => supabase
-            .from("messages")
-            .update({ is_seen: true, content: `${m.content}\n\n---SEEN---` })
-            .eq("id", m.id)
-          );
-          await Promise.all(promises);
-          
-          setConversations(prev => prev.map(c => {
-            if (c.id === convoId) {
-              return { ...c, unread: 0 };
-            }
-            return c;
-          }));
-        }
-      }
-    } catch (err) {
-      console.error("Error marking messages as seen:", err);
-    }
-  };
-
-  const loadConversations = async (targetSelectId?: string) => {
-    if (!user) return;
-    try {
-      const { data: myMemberships, error: memberErr } = await supabase
-        .from("conversation_members")
-        .select("conversation_id")
-        .eq("user_id", user.id);
-      if (memberErr) throw memberErr;
-
-      if (!myMemberships || myMemberships.length === 0) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
-
-      const convIds = myMemberships.map(m => m.conversation_id);
-
-      const { data: allMemberships, error: allMemErr } = await supabase
-        .from("conversation_members")
-        .select("conversation_id, user_id, profiles (id, name, avatar_url, github_avatar, linkedin_avatar)")
-        .in("conversation_id", convIds);
-      if (allMemErr) throw allMemErr;
-
-      const { data: conversationsMetadata, error: metaErr } = await supabase
-        .from("conversations")
-        .select("*")
-        .in("id", convIds);
-      if (metaErr) throw metaErr;
-
-      const teamIds = conversationsMetadata.map(c => c.team_id).filter(Boolean);
-      let teamsMap: Record<string, any> = {};
-      if (teamIds.length > 0) {
-        const { data: teamsData } = await supabase
-          .from("teams")
-          .select("id, name, icon, color, category")
-          .in("id", teamIds);
-        if (teamsData) {
-          teamsData.forEach(t => { teamsMap[t.id] = t; });
-        }
-      }
-
-      const { data: lastMessagesData } = await supabase
-        .from("messages")
-        .select("*")
-        .in("conversation_id", convIds)
-        .order("created_at", { ascending: false });
-
-      const lastMessagesMap: Record<string, any> = {};
-      if (lastMessagesData) {
-        lastMessagesData.forEach(msg => {
-          if (!lastMessagesMap[msg.conversation_id]) {
-            lastMessagesMap[msg.conversation_id] = msg;
-          }
-        });
-      }
-
-      const convMembersMap: Record<string, any[]> = {};
-      allMemberships.forEach(m => {
-        if (!convMembersMap[m.conversation_id]) {
-          convMembersMap[m.conversation_id] = [];
-        }
-        const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-        if (profile) convMembersMap[m.conversation_id].push(profile);
-      });
-
-      // Calculate unread counts from messages content
-      const { data: unreadData } = await supabase
-        .from("messages")
-        .select("id, conversation_id, content, is_seen, sender_id")
-        .in("conversation_id", convIds)
-        .neq("sender_id", user.id);
-
-      const unreadCounts: Record<string, number> = {};
-      if (unreadData) {
-        unreadData.forEach(msg => {
-          if (!msg.is_seen && !(msg.content || "").endsWith("\n\n---SEEN---")) {
-            unreadCounts[msg.conversation_id] = (unreadCounts[msg.conversation_id] || 0) + 1;
-          }
-        });
-      }
-
-      const formattedConvs = conversationsMetadata.map((c: any) => {
-        const lastMsg = lastMessagesMap[c.id];
-        const members = convMembersMap[c.id] || [];
-        const otherMember = members.find(m => m.id !== user.id);
-
-        let name = "Direct Chat";
-        let avatar = undefined;
-        let icon = "🎯";
-        let color = "#7C5CFF";
-
-        if (c.is_team && c.team_id && teamsMap[c.team_id]) {
-          const team = teamsMap[c.team_id];
-          name = team.name;
-          icon = team.icon || "🤖";
-          color = team.color || "#7C5CFF";
-        } else if (otherMember) {
-          name = otherMember.name;
-          avatar = otherMember.linkedin_avatar || otherMember.github_avatar || otherMember.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherMember.name}`;
-        }
-
-        let lastRaw = lastMsg ? lastMsg.content : "No messages yet";
-        if (lastMsg && lastMsg.sender_id === user.id) {
-          lastRaw = `You: ${lastMsg.content}`;
-        }
-        const lastText = lastRaw.replace(/\n\n---SEEN---$/, "");
-
-        const lastTime = lastMsg
-          ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          : "";
-
-        const isOnline = otherMember ? onlineUsers.has(otherMember.id) : false;
-
-        return {
-          id: c.id,
-          name: name,
-          lastMessage: lastText,
-          time: lastTime,
-          unread: unreadCounts[c.id] || 0,
-          isOnline: isOnline,
-          isTeam: c.is_team,
-          teamId: c.team_id,
-          otherUserId: otherMember?.id,
-          avatar: avatar,
-          icon: icon,
-          color: color,
-          pinned: false,
-          lastMessageTimestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : 0,
+  // Simulate typing indicator
+  useEffect(() => {
+    if (selectedId === "c1") {
+      const timer = setTimeout(() => setIsTyping(true), 8000);
+      const timer2 = setTimeout(() => {
+        setIsTyping(false);
+        const autoMsg: ChatMessage = {
+          id: Date.now().toString(),
+          sender: "them",
+          senderName: "Rahul Kumar",
+          senderAvatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=rahul",
+          text: "Let me know soon! Our team needs someone by tomorrow 🙏",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          date: "today",
+          status: "seen",
         };
-      });
-
-      formattedConvs.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
-
-      setConversations(formattedConvs);
-
-      if (formattedConvs.length > 0) {
-        if (targetSelectId) {
-          setSelectedId(targetSelectId);
-        } else if (!selectedId) {
-          setSelectedId(formattedConvs[0].id);
-        }
-      }
-    } catch (err) {
-      console.error("Error loading conversations:", err);
-    } finally {
-      setLoading(false);
+        updateMessages(selectedId, [...(allMessages[selectedId] || []), autoMsg]);
+      }, 11500);
+      return () => { clearTimeout(timer); clearTimeout(timer2); };
     }
+  }, [selectedId]);
+
+  const updateMessages = (convId: string, msgs: ChatMessage[]) => {
+    setAllMessages((prev) => {
+      const next = { ...prev, [convId]: msgs };
+      saveMessages(convId, msgs);
+      return next;
+    });
   };
-
-  const loadMessagesForActiveConversation = async () => {
-    if (!selectedId || !user) return;
-    try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*, profiles:sender_id (id, name, avatar_url, github_avatar, linkedin_avatar)")
-        .eq("conversation_id", selectedId)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-
-      const formatted = (data || []).map((m: any) => {
-        const senderProfile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-        const isSeen = (m.content || "").endsWith("\n\n---SEEN---");
-        return {
-          id: m.id,
-          sender: m.sender_id === user.id ? ("me" as const) : ("them" as const),
-          senderId: m.sender_id,
-          senderName: senderProfile?.name || "Builder",
-          senderAvatar: senderProfile?.linkedin_avatar || senderProfile?.github_avatar || senderProfile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${senderProfile?.name || 'builder'}`,
-          text: (m.content || "").replace(/\n\n---SEEN---$/, ""),
-          time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
-          status: isSeen ? ("seen" as const) : ("sent" as const),
-        };
-      });
-
-      setAllMessages(prev => ({ ...prev, [selectedId]: formatted }));
-    } catch (err) {
-      console.error("Error loading messages for active conversation:", err);
-    }
-  };
-
-  useEffect(() => {
-    loadMessagesForActiveConversation();
-    if (selectedId) {
-      markMessagesAsSeen(selectedId);
-    }
-  }, [selectedId, user]);
-
-  // Team Details Panel loaders
-  useEffect(() => {
-    if (!selectedConv?.isTeam || !selectedId) {
-      setTeamDetails(null);
-      setTeamMembersList([]);
-      return;
-    }
-
-    async function loadTeamRoomDetails() {
-      try {
-        const { data: convo } = await supabase
-          .from("conversations")
-          .select("team_id")
-          .eq("id", selectedId)
-          .single();
-
-        if (convo?.team_id) {
-          const { data: teamData } = await supabase
-            .from("teams")
-            .select("id, name, description, color, icon")
-            .eq("id", convo.team_id)
-            .single();
-
-          if (teamData) {
-            setTeamDetails(teamData);
-
-            const { data: members } = await supabase
-              .from("team_members")
-              .select("role, user_id, profiles (*)")
-              .eq("team_id", convo.team_id);
-
-            if (members) {
-              const formatted = members.map((m: any) => {
-                const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-                return {
-                  id: m.user_id,
-                  name: profile?.name || "Unknown Builder",
-                  avatar: profile?.linkedin_avatar || profile?.github_avatar || profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.name || "builder"}`,
-                  role: m.role || "Member"
-                };
-              });
-              setTeamMembersList(formatted);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error loading team room details:", err);
-      }
-    }
-
-    loadTeamRoomDetails();
-  }, [selectedId, selectedConv?.isTeam]);
-
-  useEffect(() => {
-    if (!user) return;
-    const room = supabase.channel('online-users');
-    
-    room
-      .on('presence', { event: 'sync' }, () => {
-        const newState = room.presenceState();
-        const users = new Set<string>();
-        Object.values(newState).forEach(presences => {
-          presences.forEach((p: any) => users.add(p.user_id));
-        });
-        setOnlineUsers(users);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await room.track({ user_id: user.id });
-        }
-      });
-      
-    return () => {
-      supabase.removeChannel(room);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!selectedId || !user) return;
-
-    // Real-time Postgres changes for messages table
-    const channel = supabase
-      .channel(`chat-room-${selectedId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${selectedId}`
-        },
-        async (payload) => {
-          const newMsg = payload.new as any;
-          if (!newMsg || !newMsg.id) return;
-          
-          if (payload.eventType === "UPDATE") {
-            setAllMessages(prev => {
-              const list = prev[selectedId] || [];
-              return {
-                ...prev,
-                [selectedId]: list.map(m => {
-                  if (m.id === newMsg.id) {
-                    const isSeen = newMsg.is_seen || (newMsg.content || "").endsWith("\n\n---SEEN---");
-                    return {
-                      ...m,
-                      text: (newMsg.content || "").replace(/\n\n---SEEN---$/, ""),
-                      status: isSeen ? ("seen" as const) : ("sent" as const)
-                    };
-                  }
-                  return m;
-                })
-              };
-            });
-            return;
-          }
-
-          if (payload.eventType === "INSERT") {
-            // Mark immediately seen if it's currently focused and sent by someone else
-            if (newMsg.sender_id !== user.id) {
-              await supabase
-                .from("messages")
-                .update({ content: `${newMsg.content}\n\n---SEEN---` })
-                .eq("id", newMsg.id);
-            }
-
-            const { data: profileData } = await supabase
-              .from("profiles")
-              .select("name, avatar_url, github_avatar, linkedin_avatar")
-              .eq("id", newMsg.sender_id)
-              .single();
-
-            const avatar = profileData?.linkedin_avatar || profileData?.github_avatar || profileData?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData?.name || 'builder'}`;
-
-            const formattedMsg: ChatMessage = {
-              id: newMsg.id,
-              sender: newMsg.sender_id === user.id ? "me" : "them",
-              senderId: newMsg.sender_id,
-              senderName: profileData?.name || "Builder",
-              senderAvatar: avatar,
-              text: (newMsg.content || "").replace(/\n\n---SEEN---$/, ""),
-              time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              date: new Date(newMsg.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }),
-              status: newMsg.is_seen || (newMsg.content || "").endsWith("\n\n---SEEN---") || newMsg.sender_id !== user.id ? "seen" : "sent",
-            };
-
-            setAllMessages(prev => {
-              const list = prev[selectedId] || [];
-              if (list.some(m => m.id === formattedMsg.id)) return prev;
-              return { ...prev, [selectedId]: [...list, formattedMsg] };
-            });
-
-            setConversations(prev => prev.map(c => {
-              if (c.id === selectedId) {
-                return {
-                  ...c,
-                  lastMessage: newMsg.sender_id === user.id ? `You: ${formattedMsg.text}` : formattedMsg.text,
-                  time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-              }
-              return c;
-            }));
-          }
-        }
-      )
-      .on(
-        "broadcast",
-        { event: "typing" },
-        (payload) => {
-          const userId = payload.payload.user_id;
-          if (userId !== user.id) {
-            setConversations(prev => prev.map(c => 
-              c.id === selectedId ? { ...c, typing: true } : c
-            ));
-            
-            if (typingUsers[userId]) {
-              clearTimeout(typingUsers[userId]);
-            }
-            
-            const timeout = setTimeout(() => {
-              setConversations(prev => prev.map(c => 
-                c.id === selectedId ? { ...c, typing: false } : c
-              ));
-            }, 2000);
-            
-            setTypingUsers(prev => ({ ...prev, [userId]: timeout }));
-          }
-        }
-      )
-      .subscribe();
-
-    typingChannelRef.current = channel;
-
-    return () => {
-      supabase.removeChannel(channel);
-      typingChannelRef.current = null;
-    };
-  }, [selectedId, user]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const targetUserId = searchParams.get("user_id");
-    const targetTeamId = searchParams.get("team_id");
-    const targetConversationId = searchParams.get("conversation");
-
-    async function initializeConversations() {
-      try {
-        if (targetConversationId) {
-          await loadConversations(targetConversationId);
-        } else if (targetUserId) {
-          const { data: userMemberships } = await supabase
-            .from("conversation_members")
-            .select("conversation_id")
-            .eq("user_id", user.id);
-
-          const convIds = (userMemberships || []).map(m => m.conversation_id);
-
-          let existingConvId = null;
-          if (convIds.length > 0) {
-            const { data: matches } = await supabase
-              .from("conversation_members")
-              .select("conversation_id")
-              .in("conversation_id", convIds)
-              .eq("user_id", targetUserId);
-            
-            if (matches && matches.length > 0) {
-              existingConvId = matches[0].conversation_id;
-            }
-          }
-
-          if (existingConvId) {
-            await loadConversations(existingConvId);
-          } else {
-            const { data: newConv } = await supabase
-              .from("conversations")
-              .insert({ is_team: false })
-              .select("id")
-              .single();
-
-            if (newConv) {
-              await supabase.from("conversation_members").insert([
-                { conversation_id: newConv.id, user_id: user.id },
-                { conversation_id: newConv.id, user_id: targetUserId }
-              ]);
-              await loadConversations(newConv.id);
-            }
-          }
-        } else if (targetTeamId) {
-          const { data: matches } = await supabase
-            .from("conversations")
-            .select("id")
-            .eq("is_team", true)
-            .eq("team_id", targetTeamId)
-            .maybeSingle();
-
-          if (matches) {
-            await loadConversations(matches.id);
-          } else {
-            const { data: newConv } = await supabase
-              .from("conversations")
-              .insert({ is_team: true, team_id: targetTeamId })
-              .select("id")
-              .single();
-
-            if (newConv) {
-              const { data: teamMems } = await supabase
-                .from("team_members")
-                .select("user_id")
-                .eq("team_id", targetTeamId);
-              
-              const insertRows = (teamMems || []).map(m => ({
-                conversation_id: newConv.id,
-                user_id: m.user_id
-              }));
-              if (!insertRows.some(r => r.user_id === user.id)) {
-                insertRows.push({ conversation_id: newConv.id, user_id: user.id });
-              }
-
-              if (insertRows.length > 0) {
-                await supabase.from("conversation_members").insert(insertRows);
-              }
-              await loadConversations(newConv.id);
-            }
-          }
-        } else {
-          await loadConversations();
-        }
-      } catch (err) {
-        console.error("Error initializing conversations:", err);
-        await loadConversations();
-      }
-    }
-
-    initializeConversations();
-  }, [user, searchParams]);
 
   const selectConversation = (id: string) => {
     setSelectedId(id);
     setShowMobileChat(true);
-    markMessagesAsSeen(id);
+    setIsTyping(false);
+    // Mark as read
+    setConversations((prev) => prev.map((c) => c.id === id ? { ...c, unread: 0 } : c));
   };
 
-  const handleSend = async () => {
-    if (!messageInput.trim() || !selectedId || !user) return;
+  const handleSend = () => {
+    if (!messageInput.trim()) return;
 
-    const content = messageInput.trim();
+    const newMsg: ChatMessage = {
+      id: Date.now().toString(),
+      sender: "me",
+      text: messageInput,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      date: "today",
+      status: "sent",
+    };
+
+    updateMessages(selectedId, [...currentMessages, newMsg]);
     setMessageInput("");
     setShowEmoji(false);
+
+    // Update last message in conv list
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedId
+          ? { ...c, lastMessage: `You: ${messageInput}`, time: newMsg.time }
+          : c
+      )
+    );
+
+    // Simulate "delivered" after 0.5s
+    setTimeout(() => {
+      setAllMessages((prev) => {
+        const msgs = [...(prev[selectedId] || [])];
+        const idx = msgs.findIndex((m) => m.id === newMsg.id);
+        if (idx !== -1) msgs[idx] = { ...msgs[idx], status: "delivered" };
+        saveMessages(selectedId, msgs);
+        return { ...prev, [selectedId]: msgs };
+      });
+    }, 500);
+
+    // Simulate "seen" after 1.5s
+    setTimeout(() => {
+      setAllMessages((prev) => {
+        const msgs = [...(prev[selectedId] || [])];
+        const idx = msgs.findIndex((m) => m.id === newMsg.id);
+        if (idx !== -1) msgs[idx] = { ...msgs[idx], status: "seen" };
+        saveMessages(selectedId, msgs);
+        return { ...prev, [selectedId]: msgs };
+      });
+    }, 1500);
+
     inputRef.current?.focus();
-
-    try {
-      const { error } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: selectedId,
-          sender_id: user.id,
-          content: content
-        });
-      if (error) throw error;
-
-      // Group Messaging Notifications
-      if (selectedConv?.isTeam && selectedConv.teamId) {
-        const { data: members } = await supabase
-          .from("team_members")
-          .select("user_id")
-          .eq("team_id", selectedConv.teamId)
-          .neq("user_id", user.id);
-
-        if (members && members.length > 0) {
-          const notifPromises = members.map(m => supabase
-            .from("notifications")
-            .insert({
-              user_id: m.user_id,
-              type: "message",
-              title: `New Message in ${selectedConv.name}`,
-              description: `${user.name}: ${content.substring(0, 50)}${content.length > 50 ? "..." : ""}`,
-              action_url: `/messages?team_id=${selectedConv.teamId}`,
-              action_label: "Open Chat"
-            })
-          );
-          await Promise.all(notifPromises);
-        }
-      } else if (selectedConv) {
-        // Direct message notifications
-        const { data: otherMem } = await supabase
-          .from("conversation_members")
-          .select("user_id")
-          .eq("conversation_id", selectedId)
-          .neq("user_id", user.id)
-          .maybeSingle();
-
-        if (otherMem) {
-          await supabase
-            .from("notifications")
-            .insert({
-              user_id: otherMem.user_id,
-              type: "message",
-              title: `New Message from ${user.name}`,
-              description: `${content.substring(0, 50)}${content.length > 50 ? "..." : ""}`,
-              action_url: `/messages?user_id=${user.id}`,
-              action_label: "Open Chat"
-            });
-        }
-      }
-    } catch (err) {
-      console.error("Error sending message:", err);
-      toast.error("Failed to send message");
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -938,13 +546,6 @@ export default function Messages() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
-    if (typingChannelRef.current && user && selectedId) {
-      typingChannelRef.current.send({
-        type: 'broadcast',
-        event: 'typing',
-        payload: { user_id: user.id }
-      });
-    }
   };
 
   const handleScroll = () => {
@@ -1071,27 +672,11 @@ export default function Messages() {
         className={`flex-1 flex flex-col min-w-0 ${showMobileChat ? "flex" : "hidden lg:flex"}`}
         style={{ background: "#06070B" }}
       >
-        {conversations.length === 0 && !loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-            <div className="text-6xl mb-6 animate-bounce" style={{ animationDuration: '3s' }}>💬</div>
-            <h2 className="text-2xl font-bold text-white mb-3">Start a Conversation</h2>
-            <p className="text-white/40 text-sm max-w-md mb-8">
-              Connect with developers and collaborate on hackathons.
-            </p>
-            <button 
-              onClick={() => navigate('/community')}
-              className="hack-btn-primary"
-            >
-              Find Developers
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Chat Header */}
-            <div
-              className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(6,7,11,0.9)", backdropFilter: "blur(10px)" }}
-            >
+        {/* Chat Header */}
+        <div
+          className="flex items-center justify-between px-5 py-3.5 flex-shrink-0"
+          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(6,7,11,0.9)", backdropFilter: "blur(10px)" }}
+        >
           <div className="flex items-center gap-3">
             {/* Back on mobile */}
             <button
@@ -1103,21 +688,15 @@ export default function Messages() {
 
             <div className="relative">
               {selectedConv?.avatar ? (
-                <div 
-                  onClick={() => selectedConv?.otherUserId && navigate(`/profile/${selectedConv.otherUserId}`)}
-                  className={`w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20 ${selectedConv?.otherUserId ? 'cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all' : ''}`}
-                >
-                  <img src={selectedConv.avatar} alt="" className="w-full h-full object-cover" />
+                <div className="w-9 h-9 rounded-full overflow-hidden bg-hack-primary/20">
+                  <img src={selectedConv.avatar} alt="" className="w-full h-full" />
                 </div>
               ) : (
                 <div
                   className="w-9 h-9 rounded-full flex items-center justify-center text-lg"
-                  style={{
-                    background: `${selectedConv?.color || "#7C5CFF"}15`,
-                    border: `1px solid ${selectedConv?.color || "#7C5CFF"}25`
-                  }}
+                  style={{ background: "rgba(124,92,255,0.12)" }}
                 >
-                  {selectedConv?.icon || "🎯"}
+                  {selectedConv?.icon}
                 </div>
               )}
               {selectedConv?.isOnline && (
@@ -1131,31 +710,31 @@ export default function Messages() {
             <div>
               <div className="text-white font-700 text-sm">{selectedConv?.name}</div>
               <div className="text-white/35 text-xs flex items-center gap-1">
-                <span
-                  className="w-1.5 h-1.5 rounded-full inline-block"
-                  style={{ background: selectedConv?.isOnline ? "#22C55E" : "rgba(255,255,255,0.2)" }}
-                />
-                {selectedConv?.isOnline ? "Online" : "Offline"}
-                {selectedConv?.isTeam && " · Team Room"}
+                {isTyping ? (
+                  <span className="text-hack-green">typing...</span>
+                ) : (
+                  <>
+                    <span
+                      className="w-1.5 h-1.5 rounded-full inline-block"
+                      style={{ background: selectedConv?.isOnline ? "#22C55E" : "rgba(255,255,255,0.2)" }}
+                    />
+                    {selectedConv?.isOnline ? "Online" : "Offline"}
+                    {selectedConv?.isTeam && " · Team Chat"}
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1">
-            {selectedConv?.isTeam && (
-              <button
-                onClick={() => setShowTeamPanel(!showTeamPanel)}
-                className={`p-2 rounded-xl transition-all ${showTeamPanel ? "text-hack-primary bg-hack-primary/10" : "text-white/30 hover:text-white/65 hover:bg-white/5"}`}
-                title="Team Members Details"
-              >
-                <Info size={15} />
-              </button>
-            )}
             <button className="p-2 rounded-xl text-white/30 hover:text-white/65 hover:bg-white/5 transition-all">
               <Phone size={15} />
             </button>
             <button className="p-2 rounded-xl text-white/30 hover:text-white/65 hover:bg-white/5 transition-all">
               <Video size={15} />
+            </button>
+            <button className="p-2 rounded-xl text-white/30 hover:text-white/65 hover:bg-white/5 transition-all">
+              <Search size={15} />
             </button>
             <button className="p-2 rounded-xl text-white/30 hover:text-white/65 hover:bg-white/5 transition-all">
               <MoreHorizontal size={15} />
@@ -1191,6 +770,10 @@ export default function Messages() {
               </div>
             </div>
           ))}
+
+          {isTyping && (
+            <TypingIndicator name={selectedConv?.name || "Someone"} />
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -1294,91 +877,12 @@ export default function Messages() {
             </div>
           </div>
 
+          {/* Shortcuts hint */}
           <div className="flex items-center justify-center gap-4 mt-2">
             <span className="text-white/15 text-[10px]">Enter to send · Shift+Enter new line</span>
           </div>
         </div>
-        </>
-        )}
       </div>
-
-      {/* ── TEAM DETAILS PANEL ── */}
-      {selectedConv?.isTeam && showTeamPanel && teamDetails && (
-        <div
-          className="hidden xl:flex flex-col flex-shrink-0 animate-slide-in p-5 space-y-6"
-          style={{
-            width: "300px",
-            background: "#0A0C14",
-            borderLeft: "1px solid rgba(255,255,255,0.06)",
-            height: "100%",
-            overflowY: "auto"
-          }}
-        >
-          {/* Header */}
-          <div className="text-center space-y-3 pb-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div
-              className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-3xl"
-              style={{ background: `${teamDetails.color || "#7C5CFF"}15`, border: `1px solid ${teamDetails.color || "#7C5CFF"}25` }}
-            >
-              {teamDetails.icon || "🎯"}
-            </div>
-            <div>
-              <h3 className="text-white font-700 text-base">{teamDetails.name}</h3>
-              <p className="text-white/40 text-[11px] mt-0.5">Team Room</p>
-            </div>
-          </div>
-
-          {/* Members List */}
-          <div className="space-y-3">
-            <div className="text-white/30 text-[10px] uppercase tracking-wider font-700">Team Leader</div>
-            {teamMembersList.filter(m => m.role === "leader").map(leader => (
-              <div key={leader.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/2 border border-white/5 animate-fade-in">
-                <div 
-                  onClick={() => navigate(`/profile/${leader.id}`)}
-                  className="w-8 h-8 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
-                >
-                  <img src={leader.avatar} alt={leader.name} className="w-full h-full object-cover" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div 
-                    onClick={() => navigate(`/profile/${leader.id}`)}
-                    className="text-white text-xs font-600 truncate cursor-pointer hover:text-hack-primary transition-colors"
-                  >
-                    {leader.name}
-                  </div>
-                  <div className="text-hack-primary text-[9px] font-600 uppercase mt-0.5">Leader</div>
-                </div>
-              </div>
-            ))}
-
-            <div className="text-white/30 text-[10px] uppercase tracking-wider font-700 pt-3">Members ({teamMembersList.filter(m => m.role !== "leader").length})</div>
-            <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-              {teamMembersList.filter(m => m.role !== "leader").map(mem => (
-                <div key={mem.id} className="flex items-center gap-3 p-2 rounded-xl bg-white/2 border border-white/5 animate-fade-in">
-                  <div 
-                    onClick={() => navigate(`/profile/${mem.id}`)}
-                    className="w-7 h-7 rounded-full overflow-hidden bg-hack-primary/20 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-hack-primary transition-all"
-                  >
-                    <img src={mem.avatar} alt={mem.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div 
-                      onClick={() => navigate(`/profile/${mem.id}`)}
-                      className="text-white text-xs font-500 truncate cursor-pointer hover:text-hack-primary transition-colors"
-                    >
-                      {mem.name}
-                    </div>
-                    <div className="text-white/35 text-[9px] capitalize mt-0.5">{mem.role}</div>
-                  </div>
-                </div>
-              ))}
-              {teamMembersList.filter(m => m.role !== "leader").length === 0 && (
-                <p className="text-white/20 text-xs text-center py-2">No other members yet.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

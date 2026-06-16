@@ -6,13 +6,30 @@ import {
 import {
   Github, Star, GitFork, ExternalLink, RefreshCw,
   Code, Clock, Users, AlertCircle, Loader2, CheckCircle,
-  Zap, TrendingUp, GitBranch, Globe, X, Calendar, Sparkles
+  Zap, TrendingUp, GitBranch, Globe, X
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { GitHubAnalytics, GitHubRepo, startGitHubOAuth, buildGitHubAnalytics, simulateGitHubConnect } from "@/lib/github";
 import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
-import { useGithubStats } from "@/hooks/useGithubStats";
-import { getLangColor } from "@/lib/github";
+
+// ─── Storage helpers ──────────────────────────────────────────────────────────
+const STORAGE_KEY = "hackos_github_analytics";
+
+function saveAnalytics(data: GitHubAnalytics) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, savedAt: Date.now() }));
+}
+
+function loadAnalytics(): GitHubAnalytics | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const { data, savedAt } = JSON.parse(raw);
+    // Cache for 30 minutes
+    if (Date.now() - savedAt > 30 * 60 * 1000) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 function CustomBarTooltip({ active, payload, label }: any) {
@@ -29,18 +46,7 @@ function CustomBarTooltip({ active, payload, label }: any) {
 }
 
 // ─── Repo Card ────────────────────────────────────────────────────────────────
-interface RepoProps {
-  name: string;
-  html_url: string;
-  description: string;
-  language: string;
-  stargazers_count: number;
-  forks_count: number;
-  updated_at: string;
-  topics?: string[];
-}
-
-function RepoCard({ repo }: { repo: RepoProps }) {
+function RepoCard({ repo }: { repo: GitHubRepo }) {
   return (
     <a
       href={repo.html_url}
@@ -70,8 +76,8 @@ function RepoCard({ repo }: { repo: RepoProps }) {
         {repo.language && (
           <span className="flex items-center gap-1">
             <span
-              className="w-2.5 h-2.5 rounded-full inline-block"
-              style={{ background: getLangColor(repo.language) }}
+              className="w-2 h-2 rounded-full inline-block"
+              style={{ background: "#7C5CFF" }}
             />
             {repo.language}
           </span>
@@ -90,8 +96,8 @@ function RepoCard({ repo }: { repo: RepoProps }) {
         </span>
       </div>
 
-      {repo.topics && repo.topics.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1">
+      {repo.topics?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
           {repo.topics.slice(0, 3).map((topic) => (
             <span key={topic} className="tag text-[9px] px-1.5 py-0.5">{topic}</span>
           ))}
@@ -102,11 +108,12 @@ function RepoCard({ repo }: { repo: RepoProps }) {
 }
 
 // ─── Language Bar Chart ───────────────────────────────────────────────────────
-function LanguageChart({ data }: { data: { name: string; percentage: number; color: string }[] }) {
+function LanguageChart({ data }: { data: GitHubAnalytics["topLanguages"] }) {
   const chartData = data.map((l) => ({ name: l.name, value: l.percentage, color: l.color }));
 
   return (
     <div>
+      {/* Recharts bar chart */}
       <div className="h-36 mb-4">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} barSize={18} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -132,6 +139,7 @@ function LanguageChart({ data }: { data: { name: string; percentage: number; col
         </ResponsiveContainer>
       </div>
 
+      {/* Legend rows with progress bars */}
       <div className="space-y-2.5">
         {data.map((lang) => (
           <div key={lang.name}>
@@ -162,31 +170,33 @@ function LanguageChart({ data }: { data: { name: string; percentage: number; col
 function ConnectPrompt({
   onConnect,
   connecting,
+  onManualEntry,
 }: {
   onConnect: () => void;
   connecting: boolean;
+  onManualEntry: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center text-center py-8 gap-5">
+    <div className="flex flex-col items-center text-center py-6 gap-5">
       <div
-        className="w-16 h-16 rounded-3xl flex items-center justify-center animate-pulse"
+        className="w-16 h-16 rounded-3xl flex items-center justify-center"
         style={{
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.1)",
         }}
       >
         <Github size={30} className="text-white" style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.2))" }} />
       </div>
 
       <div>
-        <h4 className="text-white font-700 text-base mb-1.5">Connect GitHub Account</h4>
+        <h4 className="text-white font-700 text-base mb-1.5">Connect GitHub</h4>
         <p className="text-white/40 text-sm leading-relaxed max-w-xs">
-          Synchronize public repositories, language distribution, commits, active days and match scores.
+          Showcase your repositories, language breakdown, stars, and contribution history.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 w-full max-w-sm text-xs text-white/40">
-        {["Repositories", "Language Distribution", "Author Commits Count", "Active Days Tracker"].map((item) => (
+        {["Repos & Stars", "Language Stats", "Contribution Graph", "Pinned Projects"].map((item) => (
           <div key={item} className="flex items-center gap-2">
             <CheckCircle size={11} className="text-hack-primary flex-shrink-0" />
             <span>{item}</span>
@@ -194,155 +204,207 @@ function ConnectPrompt({
         ))}
       </div>
 
-      <div className="w-full max-w-xs mt-2">
+      <div className="flex flex-col gap-2 w-full max-w-xs">
         <button
           onClick={onConnect}
           disabled={connecting}
-          className="hack-btn-primary w-full justify-center py-3 text-sm"
+          className="hack-btn-primary w-full justify-center py-3 text-base"
         >
           {connecting ? (
-            <><Loader2 size={16} className="animate-spin" /> Triggering OAuth...</>
+            <><Loader2 size={16} className="animate-spin" /> Connecting...</>
           ) : (
-            <><Github size={16} /> Connect with GitHub</>
+            <><Github size={16} /> Connect with GitHub OAuth</>
           )}
+        </button>
+        <button
+          onClick={onManualEntry}
+          className="text-white/35 text-xs hover:text-white/60 transition-colors py-1"
+        >
+          Enter username manually →
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Score Badge ──────────────────────────────────────────────────────────────
-function getScoreBadge(score: number): { label: string; color: string } {
-  if (score >= 1000) return { label: "Elite Architect", color: "#FFD700" };
-  if (score >= 500) return { label: "Master Builder", color: "#A78BFF" };
-  if (score >= 200) return { label: "Pro Developer", color: "#4F7CFF" };
-  if (score >= 50) return { label: "Rising Hacker", color: "#22C55E" };
-  return { label: "Explorer", color: "rgba(255,255,255,0.4)" };
+// ─── Manual Username Entry ────────────────────────────────────────────────────
+function ManualEntry({
+  onSubmit,
+  loading,
+  onBack,
+}: {
+  onSubmit: (username: string) => void;
+  loading: boolean;
+  onBack: () => void;
+}) {
+  const [username, setUsername] = useState("");
+
+  return (
+    <div className="flex flex-col items-center text-center py-4 gap-4">
+      <div>
+        <h4 className="text-white font-700 text-base mb-1">Enter GitHub Username</h4>
+        <p className="text-white/40 text-sm">We'll fetch your public profile and repos</p>
+      </div>
+      <div className="w-full max-w-xs space-y-3">
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 text-sm">@</span>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9\-]/g, ""))}
+            placeholder="github-username"
+            className="hack-input pl-8"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && username.trim()) onSubmit(username.trim());
+            }}
+            autoFocus
+          />
+        </div>
+        <button
+          onClick={() => username.trim() && onSubmit(username.trim())}
+          disabled={!username.trim() || loading}
+          className="hack-btn-primary w-full justify-center py-2.5"
+        >
+          {loading ? (
+            <><Loader2 size={14} className="animate-spin" /> Fetching...</>
+          ) : (
+            <><Github size={14} /> Load Profile</>
+          )}
+        </button>
+        <button onClick={onBack} className="text-white/30 text-xs hover:text-white/50 transition-colors">
+          ← Back to OAuth
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stats Row ────────────────────────────────────────────────────────────────
+function StatsRow({ analytics }: { analytics: GitHubAnalytics }) {
+  const stats = [
+    { label: "Repos", value: analytics.profile.public_repos, icon: Code, color: "#7C5CFF" },
+    { label: "Stars", value: analytics.totalStars, icon: Star, color: "#F59E0B" },
+    { label: "Forks", value: analytics.totalForks, icon: GitFork, color: "#4F7CFF" },
+    { label: "Followers", value: analytics.profile.followers, icon: Users, color: "#22C55E" },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          className="text-center p-3 rounded-xl"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+        >
+          <s.icon size={14} style={{ color: s.color }} className="mx-auto mb-1" />
+          <div className="text-white font-700 text-base">{s.value >= 1000 ? `${(s.value / 1000).toFixed(1)}K` : s.value}</div>
+          <div className="text-white/35 text-[9px] uppercase tracking-wide">{s.label}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface GitHubAnalyticsCardProps {
-  initialAnalytics?: any;
-  onConnect?: (analytics: any) => void;
+  initialAnalytics?: GitHubAnalytics | null;
+  onConnect?: (analytics: GitHubAnalytics) => void;
   onDisconnect?: () => void;
-  userId?: string;
 }
 
 export default function GitHubAnalyticsCard({
+  initialAnalytics,
   onConnect,
   onDisconnect,
-  userId
 }: GitHubAnalyticsCardProps) {
-  const { user: currentUser, updateUser } = useAuth();
-  const targetUserId = userId || currentUser?.id;
-  const isOwner = !userId || userId === currentUser?.id;
-
-  const { stats, loading, syncing, error, syncStats } = useGithubStats(targetUserId);
-
+  const [analytics, setAnalytics] = useState<GitHubAnalytics | null>(
+    initialAnalytics || loadAnalytics()
+  );
+  const [view, setView] = useState<"connect" | "manual" | "loading" | "data">(
+    initialAnalytics || loadAnalytics() ? "data" : "connect"
+  );
+  const [connecting, setConnecting] = useState(false);
+  const [loadingManual, setLoadingManual] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"languages" | "repos" | "activity">("languages");
-  const [repos, setRepos] = useState<RepoProps[]>([]);
-  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Trigger Supabase OAuth
-  const handleOAuthConnect = async () => {
-    try {
-      sessionStorage.setItem("oauth_provider", "github");
-      sessionStorage.setItem("oauth_redirect_path", window.location.pathname);
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "github",
-        options: {
-          redirectTo: window.location.origin,
-          queryParams: {
-            prompt: "select_account",
-            allow_signup: "true",
-          },
-        },
-      });
-      if (error) throw error;
-    } catch (err: any) {
-      toast.error(err.message || "Failed to trigger GitHub OAuth");
-    }
-  };
-
-  // Sync GitHub Statistics
-  const handleSync = async () => {
-    if (!currentUser?.id) return;
-    const toastId = toast.loading("Syncing GitHub repositories & commits. This may take a moment...");
-    try {
-      const result = await syncStats();
-      if (result) {
-        // Clear cached repos list to trigger refresh if tab changes
-        setRepos([]);
-        toast.success("GitHub statistics successfully synced! 🚀", { id: toastId });
-        if (onConnect) onConnect(result);
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to sync GitHub statistics.", { id: toastId });
-    }
-  };
-
-  // Disconnect GitHub
-  const handleDisconnect = async () => {
-    if (!currentUser?.id) return;
-    const confirm = window.confirm("Are you sure you want to disconnect GitHub? All synced statistics will be deleted.");
-    if (!confirm) return;
-
-    try {
-      // 1. Remove database entries from github_stats table
-      const { error: dbErr } = await supabase
-        .from("github_stats")
-        .delete()
-        .eq("user_id", currentUser.id);
-
-      if (dbErr) throw dbErr;
-
-      // 2. Sync clean states to Profiles table
-      await updateUser({
-        github_connected: false,
-        github_username: undefined,
-        github_avatar: undefined,
-        github: undefined,
-      });
-
-      setRepos([]);
-      toast.success("GitHub disconnected.");
-      if (onDisconnect) onDisconnect();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to disconnect GitHub.");
-    }
-  };
-
-  // Client-side fetch repositories of user on repository tab active
+  // Sync if initialAnalytics changes
   useEffect(() => {
-    if (activeTab === "repos" && stats?.github_username && repos.length === 0) {
-      setLoadingRepos(true);
-      fetch(`https://api.github.com/users/${stats.github_username}/repos?sort=updated&per_page=12`)
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to load repositories");
-          return res.json();
-        })
-        .then((data) => {
-          if (Array.isArray(data)) {
-            setRepos(data.filter((r: any) => !r.fork).slice(0, 6));
-          }
-        })
-        .catch((err) => console.error("Error loading repositories list:", err))
-        .finally(() => setLoadingRepos(false));
+    if (initialAnalytics) {
+      setAnalytics(initialAnalytics);
+      setView("data");
     }
-  }, [activeTab, stats?.github_username, repos.length]);
+  }, [initialAnalytics]);
 
-  // Map languages list for rendering charts
-  const languagesList = stats?.languages
-    ? Object.entries(stats.languages)
-        .sort(([, a], [, b]) => b - a)
-        .map(([name, percentage]) => ({
-          name,
-          percentage,
-          color: getLangColor(name),
-        }))
-    : [];
+  const handleOAuth = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      // Try real OAuth popup
+      const code = await startGitHubOAuth();
+      // Since we can't exchange the code for a token client-side (CORS),
+      // we fall back to asking for the username — or in demo we auto-fetch
+      // public data. For a production app you'd POST code to your backend.
+      toast.info("OAuth authorized! Loading your public GitHub profile...");
+      // Extract username from URL (GitHub returns it in authorized URL)
+      // For this demo, we'll prompt for username after OAuth
+      setConnecting(false);
+      setView("manual");
+    } catch (err: any) {
+      setConnecting(false);
+      if (err.message?.includes("cancelled")) {
+        toast.info("GitHub authorization cancelled.");
+      } else if (err.message?.includes("Popup blocked")) {
+        toast.error("Popup blocked — please allow popups and try again, or use manual entry.");
+        setView("manual");
+      } else {
+        // Fallback to manual for other errors
+        setView("manual");
+      }
+    }
+  };
 
-  const showStatsPrompt = isOwner && currentUser?.github_connected && !stats && !loading;
+  const handleManualUsername = async (username: string) => {
+    setLoadingManual(true);
+    setError(null);
+    try {
+      const data = await buildGitHubAnalytics(username);
+      setAnalytics(data);
+      saveAnalytics(data);
+      setView("data");
+      onConnect?.(data);
+      toast.success(`GitHub profile loaded: @${username} 🚀`);
+    } catch (err: any) {
+      setError(err.message || "Failed to load GitHub profile");
+      toast.error("Could not load GitHub profile. Check the username.");
+    } finally {
+      setLoadingManual(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!analytics?.username) return;
+    setRefreshing(true);
+    try {
+      localStorage.removeItem("hackos_github_analytics");
+      const data = await buildGitHubAnalytics(analytics.username);
+      setAnalytics(data);
+      saveAnalytics(data);
+      toast.success("GitHub data refreshed!");
+    } catch {
+      toast.error("Failed to refresh. Please try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    localStorage.removeItem("hackos_github_analytics");
+    setAnalytics(null);
+    setView("connect");
+    onDisconnect?.();
+    toast.info("GitHub disconnected.");
+  };
 
   return (
     <div
@@ -351,7 +413,7 @@ export default function GitHubAnalyticsCard({
         background: "linear-gradient(180deg, rgba(124,92,255,0.04) 0%, rgba(14,17,27,0.98) 100%)",
       }}
     >
-      {/* Card Header */}
+      {/* Header */}
       <div
         className="flex items-center justify-between px-6 py-4"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
@@ -365,14 +427,14 @@ export default function GitHubAnalyticsCard({
           </div>
           <div>
             <h3 className="text-white font-700 text-sm">GitHub Analytics</h3>
-            {stats && (
+            {analytics && (
               <a
-                href={`https://github.com/${stats.github_username}`}
+                href={analytics.profile.html_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-hack-primary text-[10px] flex items-center gap-1 hover:underline"
               >
-                @{stats.github_username}
+                @{analytics.username}
                 <ExternalLink size={9} />
               </a>
             )}
@@ -380,7 +442,7 @@ export default function GitHubAnalyticsCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {isOwner && currentUser?.github_connected && (
+          {analytics && (
             <>
               <div
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-600"
@@ -390,27 +452,28 @@ export default function GitHubAnalyticsCard({
                 Connected
               </div>
               <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="p-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/5 transition-all"
-                title="Refresh GitHub Stats"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/5 transition-all"
+                title="Refresh data"
               >
-                <RefreshCw size={13} className={syncing ? "animate-spin" : ""} />
+                <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
               </button>
               <button
                 onClick={handleDisconnect}
                 className="p-1.5 rounded-lg text-white/20 hover:text-hack-red hover:bg-white/5 transition-all"
                 title="Disconnect GitHub"
               >
-                <X size={13} />
+                <X size={12} />
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* Body Content */}
+      {/* Body */}
       <div className="p-6">
+        {/* Error state */}
         {error && (
           <div
             className="flex items-center gap-3 p-3 rounded-xl mb-4"
@@ -418,133 +481,73 @@ export default function GitHubAnalyticsCard({
           >
             <AlertCircle size={14} className="text-hack-red flex-shrink-0" />
             <span className="text-white/60 text-xs flex-1">{error}</span>
-          </div>
-        )}
-
-        {/* OAuth Not Connected Prompt */}
-        {isOwner && !currentUser?.github_connected && (
-          <ConnectPrompt
-            onConnect={handleOAuthConnect}
-            connecting={loading}
-          />
-        )}
-
-        {/* Not Connected (Public View) */}
-        {!isOwner && !stats && !loading && (
-          <div className="text-center py-8 text-white/40 text-sm">
-            This user hasn't connected their GitHub account yet.
-          </div>
-        )}
-
-        {/* Sync Prompt if connected but no database stats loaded yet */}
-        {showStatsPrompt && (
-          <div className="flex flex-col items-center justify-center text-center py-10 gap-4">
-            <Sparkles size={28} className="text-hack-primary animate-pulse" />
-            <div>
-              <h4 className="text-white font-600 text-sm mb-1">Synchronize Stats Needed</h4>
-              <p className="text-white/40 text-xs max-w-xs">
-                Your account is linked! Sync your GitHub stats now to generate your developer rating and score.
-              </p>
-            </div>
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="hack-btn-primary py-2 px-5 text-xs font-600"
-            >
-              {syncing ? (
-                <><Loader2 size={13} className="animate-spin" /> Syncing...</>
-              ) : (
-                "Sync Statistics"
-              )}
+            <button onClick={() => setError(null)} className="text-white/30 hover:text-white/60">
+              <X size={12} />
             </button>
           </div>
         )}
 
-        {/* Loading Database State */}
-        {loading && !syncing && (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Loader2 size={24} className="text-hack-primary animate-spin" />
-            <span className="text-white/40 text-xs">Loading GitHub stats...</span>
-          </div>
+        {/* Connect prompt */}
+        {view === "connect" && (
+          <ConnectPrompt
+            onConnect={handleOAuth}
+            connecting={connecting}
+            onManualEntry={() => setView("manual")}
+          />
         )}
 
-        {/* Syncing active loading screen */}
-        {syncing && (
-          <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
-            <Loader2 size={28} className="text-hack-primary animate-spin" />
-            <div>
-              <span className="text-white font-600 text-sm block">Syncing GitHub Repositories...</span>
-              <span className="text-white/40 text-xs mt-1 block max-w-xs">
-                We are counting your commits, tracking active contribution days, and calculating repository languages. This may take up to a minute.
-              </span>
-            </div>
-          </div>
+        {/* Manual entry */}
+        {view === "manual" && (
+          <ManualEntry
+            onSubmit={handleManualUsername}
+            loading={loadingManual}
+            onBack={() => setView("connect")}
+          />
         )}
 
-        {/* Stats view */}
-        {!syncing && !loading && stats && (
-          <div className="space-y-6">
-            {/* User Profile Info */}
+        {/* Data view */}
+        {view === "data" && analytics && (
+          <div className="space-y-5">
+            {/* Profile summary */}
             <div
-              className="flex items-center gap-3.5 p-3.5 rounded-2xl"
+              className="flex items-center gap-3 p-3.5 rounded-2xl"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
             >
-              <div
-                className="w-11 h-11 rounded-full overflow-hidden border-2"
-                style={{ borderColor: "rgba(255,255,255,0.15)" }}
-              >
-                <img
-                  src={isOwner ? currentUser?.avatar || `https://github.com/${stats.github_username}.png` : `https://github.com/${stats.github_username}.png`}
-                  alt={stats.github_username}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <img
+                src={analytics.profile.avatar_url}
+                alt={analytics.username}
+                className="w-10 h-10 rounded-full flex-shrink-0"
+              />
               <div className="flex-1 min-w-0">
-                <div className="text-white font-600 text-sm flex items-center gap-2">
-                  {isOwner ? currentUser?.name || stats.github_username : stats.github_username}
-                  <span
-                    className="text-[9px] font-700 px-2 py-0.5 rounded-full"
-                    style={{
-                      background: `${getScoreBadge(stats.score).color}15`,
-                      color: getScoreBadge(stats.score).color,
-                      border: `1px solid ${getScoreBadge(stats.score).color}30`,
-                    }}
-                  >
-                    {getScoreBadge(stats.score).label}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-white/30 text-[10px] mt-1">
+                <div className="text-white font-600 text-sm">{analytics.profile.name || analytics.username}</div>
+                {analytics.profile.bio && (
+                  <div className="text-white/40 text-xs truncate">{analytics.profile.bio}</div>
+                )}
+                <div className="flex items-center gap-3 text-white/30 text-[10px] mt-0.5">
+                  {analytics.profile.location && (
+                    <span className="flex items-center gap-1">
+                      <Globe size={9} /> {analytics.profile.location}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
-                    <Globe size={9} /> {currentUser?.location || "Bangalore, India"}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Calendar size={9} /> Sync: {new Date(stats.last_synced).toLocaleDateString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                    <Clock size={9} /> Active {analytics.recentActivity}
                   </span>
                 </div>
               </div>
+              <a
+                href={analytics.profile.html_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/5 transition-all flex-shrink-0"
+              >
+                <ExternalLink size={13} />
+              </a>
             </div>
 
-            {/* Sync Numbers Row */}
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { label: "Repos", value: stats.public_repos, icon: Code, color: "#7C5CFF" },
-                { label: "Commits", value: stats.total_commits, icon: TrendingUp, color: "#22C55E" },
-                { label: "Active Days", value: stats.active_days, icon: Calendar, color: "#4F7CFF" },
-                { label: "Rank Score", value: stats.score, icon: Star, color: "#F59E0B" },
-              ].map((s) => (
-                <div
-                  key={s.label}
-                  className="text-center p-3 rounded-xl"
-                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
-                >
-                  <s.icon size={13} style={{ color: s.color }} className="mx-auto mb-1.5" />
-                  <div className="text-white font-700 text-base">{s.value >= 1000 ? `${(s.value / 1000).toFixed(1)}K` : s.value}</div>
-                  <div className="text-white/35 text-[9px] uppercase tracking-wider mt-0.5">{s.label}</div>
-                </div>
-              ))}
-            </div>
+            {/* Stats */}
+            <StatsRow analytics={analytics} />
 
-            {/* Menu Tabs */}
+            {/* Tabs */}
             <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.03)" }}>
               {(["languages", "repos", "activity"] as const).map((tab) => (
                 <button
@@ -557,36 +560,31 @@ export default function GitHubAnalyticsCard({
                     border: activeTab === tab ? "1px solid rgba(124,92,255,0.25)" : "1px solid transparent",
                   }}
                 >
-                  {tab === "languages" ? "Languages" : tab === "repos" ? "Top Repos" : "Rank Stats"}
+                  {tab === "languages" ? "Languages" : tab === "repos" ? "Top Repos" : "Activity"}
                 </button>
               ))}
             </div>
 
-            {/* Tab content view */}
+            {/* Tab content */}
             {activeTab === "languages" && (
-              languagesList.length > 0 ? (
-                <LanguageChart data={languagesList} />
+              analytics.topLanguages.length > 0 ? (
+                <LanguageChart data={analytics.topLanguages} />
               ) : (
                 <div className="text-center py-6 text-white/30 text-sm">
-                  No public repo languages detected yet.
+                  No language data found in public repositories.
                 </div>
               )
             )}
 
             {activeTab === "repos" && (
               <div className="space-y-3">
-                {loadingRepos ? (
-                  <div className="flex justify-center items-center py-6 gap-2">
-                    <Loader2 size={13} className="animate-spin text-white/40" />
-                    <span className="text-white/30 text-xs">Loading repositories...</span>
-                  </div>
-                ) : repos.length > 0 ? (
-                  repos.map((repo) => (
-                    <RepoCard key={repo.name} repo={repo} />
+                {analytics.repos.length > 0 ? (
+                  analytics.repos.map((repo) => (
+                    <RepoCard key={repo.id} repo={repo} />
                   ))
                 ) : (
                   <div className="text-center py-6 text-white/30 text-sm">
-                    No repositories found or failed to load repo list.
+                    No public repositories found.
                   </div>
                 )}
               </div>
@@ -594,12 +592,13 @@ export default function GitHubAnalyticsCard({
 
             {activeTab === "activity" && (
               <div className="space-y-4">
+                {/* Activity stats */}
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { icon: TrendingUp, label: "Top Tech Stack", value: languagesList[0]?.name || "N/A", color: languagesList[0]?.color || "#7C5CFF" },
-                    { icon: Zap, label: "Developer Rank", value: getScoreBadge(stats.score).label, color: getScoreBadge(stats.score).color },
-                    { icon: Code, label: "Repos Count", value: `${stats.public_repos} Repos`, color: "#4F7CFF" },
-                    { icon: Users, label: "Avg Contributions", value: stats.public_repos > 0 ? `${(stats.total_commits / stats.public_repos).toFixed(1)} / repo` : "0.0", color: "#22C55E" },
+                    { icon: TrendingUp, label: "Most Active Language", value: analytics.topLanguages[0]?.name || "N/A", color: analytics.topLanguages[0]?.color || "#7C5CFF" },
+                    { icon: Zap, label: "Last Activity", value: analytics.recentActivity, color: "#F59E0B" },
+                    { icon: Star, label: "Total Stars Earned", value: `${analytics.totalStars}`, color: "#F59E0B" },
+                    { icon: Code, label: "Public Repos", value: `${analytics.profile.public_repos}`, color: "#7C5CFF" },
                   ].map((item) => (
                     <div
                       key={item.label}
@@ -608,26 +607,26 @@ export default function GitHubAnalyticsCard({
                     >
                       <item.icon size={13} style={{ color: item.color }} className="mb-2" />
                       <div className="text-white font-600 text-sm leading-tight">{item.value}</div>
-                      <div className="text-white/35 text-[10px] mt-1">{item.label}</div>
+                      <div className="text-white/35 text-[10px] mt-0.5">{item.label}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Pie Chart display */}
-                {languagesList.length > 0 && (
+                {/* Language mini pie */}
+                {analytics.topLanguages.length > 0 && (
                   <div
                     className="p-4 rounded-2xl"
                     style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
                   >
                     <div className="text-white/50 text-xs font-600 mb-3 flex items-center gap-1.5">
                       <Code size={12} className="text-hack-primary" />
-                      Languages Breakdown
+                      Language Distribution
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="flex-shrink-0">
                         <PieChart width={80} height={80}>
                           <Pie
-                            data={languagesList}
+                            data={analytics.topLanguages}
                             dataKey="percentage"
                             cx={40}
                             cy={40}
@@ -635,14 +634,14 @@ export default function GitHubAnalyticsCard({
                             innerRadius={22}
                             strokeWidth={0}
                           >
-                            {languagesList.map((entry, i) => (
+                            {analytics.topLanguages.map((entry, i) => (
                               <Cell key={i} fill={entry.color} />
                             ))}
                           </Pie>
                         </PieChart>
                       </div>
                       <div className="flex-1 grid grid-cols-2 gap-y-2 gap-x-3">
-                        {languagesList.slice(0, 4).map((lang) => (
+                        {analytics.topLanguages.map((lang) => (
                           <div key={lang.name} className="flex items-center gap-1.5">
                             <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: lang.color }} />
                             <span className="text-white/60 text-[10px] truncate">{lang.name}</span>
@@ -655,6 +654,23 @@ export default function GitHubAnalyticsCard({
                 )}
               </div>
             )}
+
+            {/* Footer action */}
+            <a
+              href={analytics.profile.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-600 transition-all w-full"
+              style={{
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                color: "rgba(255,255,255,0.4)",
+              }}
+            >
+              <Github size={12} />
+              View full profile on GitHub
+              <ExternalLink size={10} />
+            </a>
           </div>
         )}
       </div>

@@ -13,11 +13,11 @@ export default function AppLayout() {
 
       {/* Main content */}
       <div
-        className="flex-1 flex flex-col overflow-hidden transition-all duration-300 relative"
+        className="flex-1 flex flex-col overflow-hidden transition-all duration-300"
         style={{ marginLeft: sidebarOpen ? "280px" : "0px" }}
       >
         <TopNav onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 overflow-y-auto relative">
+        <main className="flex-1 overflow-y-auto">
           <div className="page-enter">
             <Outlet />
           </div>

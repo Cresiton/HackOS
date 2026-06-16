@@ -1,3 +1,5 @@
+import { GITHUB_CLIENT_ID } from "@/constants";
+
 export interface GitHubProfile {
   login: string;
   name: string;
@@ -71,6 +73,71 @@ const LANG_COLORS: Record<string, string> = {
 
 export function getLangColor(lang: string): string {
   return LANG_COLORS[lang] || "#7C5CFF";
+}
+
+// ── GitHub OAuth ─────────────────────────────────────────────────────────────
+export function startGitHubOAuth(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const state = Math.random().toString(36).slice(2);
+    localStorage.setItem("github_oauth_state", state);
+
+    const redirectUri = `${window.location.origin}/github-callback`;
+    const scope = "read:user,public_repo";
+    const authUrl =
+      `https://github.com/login/oauth/authorize` +
+      `?client_id=${GITHUB_CLIENT_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&scope=${encodeURIComponent(scope)}` +
+      `&state=${state}`;
+
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      authUrl,
+      "github-oauth",
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+    );
+
+    if (!popup) {
+      reject(new Error("Popup blocked. Please allow popups for this site."));
+      return;
+    }
+
+    // Listen for message from callback page
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "github-oauth-success") {
+        const { code, state: returnedState } = event.data;
+        const savedState = localStorage.getItem("github_oauth_state");
+        if (returnedState !== savedState) {
+          reject(new Error("OAuth state mismatch. Please try again."));
+          return;
+        }
+        localStorage.removeItem("github_oauth_state");
+        window.removeEventListener("message", onMessage);
+        popup.close();
+        resolve(code);
+      } else if (event.data?.type === "github-oauth-error") {
+        window.removeEventListener("message", onMessage);
+        popup.close();
+        reject(new Error(event.data.error || "Authorization denied"));
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+
+    // Detect popup closed without completing OAuth
+    const pollClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollClosed);
+        window.removeEventListener("message", onMessage);
+        reject(new Error("GitHub authorization was cancelled."));
+      }
+    }, 500);
+  });
 }
 
 // ── GitHub Public API (no token needed) ─────────────────────────────────────
@@ -158,7 +225,7 @@ export async function buildGitHubAnalytics(
   };
 }
 
-// ── Simulate GitHub connection for manual fallback ──────────────────────────
+// ── Simulate OAuth for demo (when popup flow fails) ──────────────────────────
 export async function simulateGitHubConnect(username: string): Promise<GitHubAnalytics> {
   return buildGitHubAnalytics(username);
 }

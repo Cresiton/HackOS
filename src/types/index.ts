@@ -6,8 +6,6 @@ export interface User {
   role: string;
   skills: string[];
   location: string;
-  latitude?: number;
-  longitude?: number;
   bio: string;
   github?: string;
   linkedin?: string;
@@ -19,21 +17,6 @@ export interface User {
   experience?: string;
   isOnline?: boolean;
   badges?: string[];
-  github_username?: string;
-  github_avatar?: string;
-  github_connected?: boolean;
-  github_connected_at?: string;
-  linkedin_url?: string;
-  linkedin_name?: string;
-  linkedin_avatar?: string;
-  linkedin_connected?: boolean;
-  linkedin_connected_at?: string;
-  education?: UserEducation[];
-  experiences?: UserExperience[];
-  projects?: UserProject[];
-  domains?: string[];
-  resume?: UserResume;
-  profile_completed?: boolean;
 }
 
 export interface Hackathon {
@@ -57,13 +40,6 @@ export interface Hackathon {
   difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
   teamSize?: string;
   status: 'open' | 'closed' | 'upcoming';
-  requirements?: any[];
-  external?: boolean;
-  eventLink?: string;
-  category?: string;
-  team_size_min?: number;
-  team_size_max?: number;
-  customFields?: any[];
 }
 
 export interface Team {
@@ -135,67 +111,10 @@ export interface Teammate {
   name: string;
   role: string;
   location: string;
-  latitude?: number;
-  longitude?: number;
   skills: string[];
   rating: number;
   matchScore: number;
   isOnline: boolean;
   avatar?: string;
   college?: string;
-  email?: string;
-  github_username?: string;
-  github_connected?: boolean;
-  linkedin_connected?: boolean;
-  linkedin_url?: string;
-  explanation?: string;
-  searchScore?: number;
-}
-
-export interface GitHubStats {
-  user_id: string;
-  github_username: string;
-  public_repos: number;
-  total_commits: number;
-  active_days: number;
-  score: number;
-  languages: Record<string, number>;
-  last_synced: string;
-}
-
-export interface UserEducation {
-  id?: string;
-  user_id?: string;
-  degree: string;
-  institution: string;
-  field_of_study?: string;
-  start_year?: string;
-  end_year?: string;
-}
-
-export interface UserProject {
-  id?: string;
-  user_id?: string;
-  title: string;
-  description?: string;
-  tech_stack: string[];
-  github_url?: string;
-  live_url?: string;
-}
-
-export interface UserExperience {
-  id?: string;
-  user_id?: string;
-  title: string;
-  company: string;
-  period?: string;
-  description?: string;
-}
-
-export interface UserResume {
-  user_id?: string;
-  file_name: string;
-  file_url: string;
-  file_type: string;
-  uploaded_at: string;
 }

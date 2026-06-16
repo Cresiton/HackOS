@@ -13,18 +13,13 @@ import MyRequests from "@/pages/MyRequests";
 import Messages from "@/pages/Messages";
 import NotificationsPage from "@/pages/NotificationsPage";
 import ProfilePage from "@/pages/ProfilePage";
-import PublicProfilePage from "@/pages/PublicProfilePage";
 import AITeamBuilder from "@/pages/AITeamBuilder";
 import HostHackathon from "@/pages/HostHackathon";
 import HackathonDetail from "@/pages/HackathonDetail";
 import NotFound from "@/pages/NotFound";
-import CreateTeamWizard from "@/pages/CreateTeamWizard";
-import DiscoverTeams from "@/pages/DiscoverTeams";
 import ProfileSetupWizard from "@/pages/ProfileSetupWizard";
+import GitHubCallback from "@/pages/GitHubCallback";
 import SettingsPage from "@/pages/SettingsPage";
-import RegisterHackathon from "@/pages/RegisterHackathon";
-import HackOSMatch from "@/pages/HackOSMatch";
-import GlobalSearch from "@/pages/GlobalSearch";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -39,85 +34,65 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-
-  const isSetupPath = window.location.pathname === "/profile-setup";
-  if (user?.profile_completed !== true && !isSetupPath) {
-    return <Navigate to="/profile-setup" replace />;
-  }
-  if (user?.profile_completed === true && isSetupPath) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   if (isLoading) return null;
-  if (user) {
-    const savedRedirect = sessionStorage.getItem("oauth_redirect_path");
-    if (savedRedirect) {
-      sessionStorage.removeItem("oauth_redirect_path");
-      return <Navigate to={savedRedirect} replace />;
-    }
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (user) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
-            <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-            <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<PublicRoute><LandingPage /></PublicRoute>} />
+          <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+          <Route path="/signup" element={<PublicRoute><SignupPage /></PublicRoute>} />
 
-            {/* Profile setup wizard — protected but no sidebar layout */}
-            <Route
-              path="/profile-setup"
-              element={<ProtectedRoute><ProfileSetupWizard /></ProtectedRoute>}
-            />
-
-
-            {/* Protected routes with layout */}
-            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/discover" element={<DiscoverHackathons />} />
-              <Route path="/hackathon/:id" element={<HackathonDetail />} />
-              <Route path="/register-hackathon/:id" element={<RegisterHackathon />} />
-              <Route path="/my-teams" element={<MyTeams />} />
-              <Route path="/create-team" element={<CreateTeamWizard />} />
-              <Route path="/discover-teams" element={<DiscoverTeams />} />
-              <Route path="/my-requests" element={<MyRequests />} />
-              <Route path="/messages" element={<Messages />} />
-              <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/profile/:id" element={<PublicProfilePage />} />
-              <Route path="/ai-team-builder" element={<AITeamBuilder />} />
-              <Route path="/host-hackathon" element={<HostHackathon />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/match" element={<HackOSMatch />} />
-              <Route path="/search" element={<GlobalSearch />} />
-            </Route>
-
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          <Toaster
-            theme="dark"
-            toastOptions={{
-              style: {
-                background: "#131826",
-                border: "1px solid rgba(255,255,255,0.08)",
-                color: "#E8EAF0",
-              },
-            }}
+          {/* Profile setup wizard — protected but no sidebar layout */}
+          <Route
+            path="/profile-setup"
+            element={<ProtectedRoute><ProfileSetupWizard /></ProtectedRoute>}
           />
-        </BrowserRouter>
-      </AuthProvider>
+
+          {/* GitHub OAuth callback — public, opens in popup */}
+          <Route path="/github-callback" element={<GitHubCallback />} />
+
+          {/* Protected routes with layout */}
+          <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/discover" element={<DiscoverHackathons />} />
+            <Route path="/hackathon/:id" element={<HackathonDetail />} />
+            <Route path="/my-teams" element={<MyTeams />} />
+            <Route path="/my-requests" element={<MyRequests />} />
+            <Route path="/messages" element={<Messages />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/ai-team-builder" element={<AITeamBuilder />} />
+            <Route path="/host-hackathon" element={<HostHackathon />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+        <Toaster
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: "#131826",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "#E8EAF0",
+            },
+          }}
+        />
+      </BrowserRouter>
+    </AuthProvider>
     </ThemeProvider>
   );
 }

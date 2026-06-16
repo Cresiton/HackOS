@@ -24,18 +24,6 @@ export default {
         "hack-red": "#EF4444",
         "hack-orange": "#F59E0B",
         "hack-border": "rgba(255,255,255,0.07)",
-        "jury-bg": "#050816",
-        "jury-bg2": "#0D111D",
-        "jury-card": "rgba(255,255,255,0.04)",
-        "jury-border": "rgba(255,255,255,0.08)",
-        "jury-accent": "#6D5EF5",
-        "jury-accent2": "#00D2FF",
-        "jury-success": "#00E676",
-        "jury-warning": "#FFB300",
-        "jury-danger": "#FF5252",
-        "jury-text-primary": "#FFFFFF",
-        "jury-text-secondary": "rgba(255,255,255,0.7)",
-        "jury-text-muted": "rgba(255,255,255,0.45)",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
@@ -105,8 +93,6 @@ export default {
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "float": "float 3s ease-in-out infinite",
         "slide-in": "slideIn 0.35s ease-out",
-        "jury-glow": "jury-glow 2.5s ease-in-out infinite",
-        "jury-float": "jury-float 4s ease-in-out infinite",
       },
       keyframes: {
         shimmer: {
@@ -124,14 +110,6 @@ export default {
         slideIn: {
           "0%": { opacity: "0", transform: "translateY(20px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        "jury-glow": {
-          "0%, 100%": { boxShadow: "0 0 15px rgba(109,94,245,0.4)" },
-          "50%": { boxShadow: "0 0 35px rgba(109,94,245,0.8)" },
-        },
-        "jury-float": {
-          "0%, 100%": { transform: "translateY(0px)" },
-          "50%": { transform: "translateY(-6px)" },
         },
       },
       backdropBlur: {

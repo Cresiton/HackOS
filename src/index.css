@@ -4,8 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Google Font ───────────────────────────────────────────────────────────── */
-
 /* ─── shadcn/ui CSS variables (dark — default) ──────────────────────────────── */
 @layer base {
   :root {

@@ -1,89 +1,23 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import {
   Bell, Users, Trophy, User, MessageSquare, AlertTriangle,
   CheckCheck, Trash2, Filter, ArrowRight, ChevronRight
 } from "lucide-react";
+import { NOTIFICATIONS } from "@/lib/mockData";
 import { Notification } from "@/types";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/contexts/AuthContext";
 
-const TYPE_CONFIG: Record<string, { icon: any; color: string; bg: string }> = {
+const TYPE_CONFIG = {
   team: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
-  team_invite: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
-  join_request: { icon: Users, color: "#7C5CFF", bg: "rgba(124,92,255,0.12)" },
-  invite_accepted: { icon: Users, color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
-  invite_rejected: { icon: Users, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
   hackathon: { icon: Trophy, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
-  hackathon_registration: { icon: Trophy, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
   profile: { icon: User, color: "#22C55E", bg: "rgba(34,197,94,0.12)" },
   message: { icon: MessageSquare, color: "#4F7CFF", bg: "rgba(79,124,255,0.12)" },
-  team_update: { icon: AlertTriangle, color: "#F59E0B", bg: "rgba(245,158,11,0.12)" },
   alert: { icon: AlertTriangle, color: "#EF4444", bg: "rgba(239,68,68,0.12)" },
 };
 
 export default function NotificationsPage() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(NOTIFICATIONS);
   const [activeFilter, setActiveFilter] = useState<"all" | "unread">("all");
-  const [loading, setLoading] = useState(true);
-
-  const loadNotifications = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      
-      const formatted = (data || []).map((n: any) => {
-        return {
-          id: n.id,
-          type: (n.type || "alert") as any,
-          title: n.title || "",
-          description: n.description || "",
-          timestamp: new Date(n.created_at).toLocaleDateString() + " " + new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          read: !!n.is_read,
-          actionUrl: n.action_url || undefined,
-          actionLabel: n.action_label || undefined,
-        };
-      });
-      setNotifications(formatted);
-    } catch (err) {
-      console.error("Error loading notifications:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadNotifications();
-
-    if (!user) return;
-    const channel = supabase
-      .channel(`page-notifications-${user.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          loadNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
 
   const filtered = notifications.filter((n) => {
     if (activeFilter === "unread") return !n.read;
@@ -92,54 +26,18 @@ export default function NotificationsPage() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllRead = async () => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("user_id", user.id)
-        .eq("is_read", false);
-      
-      if (error) throw error;
-
-      toast.success("All notifications marked as read");
-      loadNotifications();
-    } catch (err) {
-      console.error("Error marking all read:", err);
-    }
+  const markAllRead = () => {
+    setNotifications(notifications.map((n) => ({ ...n, read: true })));
+    toast.success("All notifications marked as read");
   };
 
-  const markRead = async (id: string) => {
-    try {
-      const notif = notifications.find(n => n.id === id);
-      if (!notif || notif.read) return;
-
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", id);
-      if (error) throw error;
-
-      loadNotifications();
-    } catch (err) {
-      console.error("Error marking read:", err);
-    }
+  const markRead = (id: string) => {
+    setNotifications(notifications.map((n) => n.id === id ? { ...n, read: true } : n));
   };
 
-  const deleteNotif = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("notifications")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-
-      toast.success("Notification removed");
-      loadNotifications();
-    } catch (err) {
-      console.error("Error deleting notification:", err);
-    }
+  const deleteNotif = (id: string) => {
+    setNotifications(notifications.filter((n) => n.id !== id));
+    toast.success("Notification removed");
   };
 
   return (
@@ -247,14 +145,7 @@ export default function NotificationsPage() {
                   <span className="text-white/25 text-[10px]">{notif.timestamp}</span>
                   {notif.actionLabel && (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        markRead(notif.id);
-                        if (notif.actionUrl) {
-                          navigate(notif.actionUrl);
-                        }
-                      }}
-                      className="text-xs font-600 flex items-center gap-1 hover:underline transition-colors"
+                      className="text-xs font-600 flex items-center gap-1 transition-colors"
                       style={{ color: config.color }}
                     >
                       {notif.actionLabel}

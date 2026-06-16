@@ -17,7 +17,7 @@ const MOCK_USER: User = {
   college: "IIT Bangalore",
   experience: "2 years",
   isOnline: true,
-  badges: [],
+  badges: ["Top Builder", "AI Enthusiast", "3x Winner"],
 };
 
 export function getStoredUser(): User | null {

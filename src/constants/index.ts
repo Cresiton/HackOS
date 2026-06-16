@@ -14,7 +14,8 @@ export const GROQ_API_KEYS = [
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
 export const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-export const GITHUB_CLIENT_ID = "Ov23lisYv0mtZZ12uIa2";
+export const GITHUB_CLIENT_ID = "Ov23lis5uBult6G8rw3o";
+export const GITHUB_CLIENT_SECRET = "cc572e606debc11a3e60f0a0a9376de76c66d80e";
 
 export const SKILLS_LIST = [
   "React", "Next.js", "Vue.js", "Angular", "TypeScript", "JavaScript",

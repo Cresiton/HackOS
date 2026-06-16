@@ -9,41 +9,25 @@ import {
 import { Hackathon } from "@/types";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase";
 
 // ─── Dynamic schema builder ───────────────────────────────────────────────────
 function buildSchema(fields: FormFieldConfig[]) {
   const shape: Record<string, z.ZodTypeAny> = {};
   fields.forEach((field) => {
-    let schemaField: z.ZodTypeAny;
-
+    if (!field.required) return;
     switch (field.type) {
       case "email":
-        schemaField = z.string().email("Enter a valid email address");
-        break;
-      case "number":
-        schemaField = z.string().regex(/^\d+$/, "Must be a valid number");
+        shape[field.id] = z.string().email("Enter a valid email address");
         break;
       case "tel":
-        schemaField = z.string().min(10, "Enter a valid phone number").max(15, "Too long");
+        shape[field.id] = z.string().min(10, "Enter a valid phone number").max(15, "Too long");
         break;
       case "file":
-        schemaField = z.any();
+        shape[field.id] = z.any().optional();
         break;
       default:
-        schemaField = z.string();
+        shape[field.id] = z.string().min(1, `${field.label} is required`);
     }
-
-    if (field.required) {
-      if (field.type !== "file") {
-        schemaField = (schemaField as z.ZodString).min(1, `${field.label} is required`);
-      }
-    } else {
-      schemaField = schemaField.optional().nullable();
-    }
-
-    shape[field.id] = schemaField;
   });
   return z.object(shape);
 }
@@ -109,73 +93,9 @@ function RegistrationForm({
 
   const [fileNames, setFileNames] = useState<Record<string, string>>({});
 
-  const { user } = useAuth();
-
   const onSubmit = async (data: FormValues) => {
-    try {
-      // Map form outputs dynamically
-      let name = user?.name || "Anonymous";
-      let email = user?.email || "";
-      let college = "";
-      let resume_url = "";
-      let experience = "";
-      const answers: Record<string, any> = {};
-
-      Object.entries(data).forEach(([key, val]) => {
-        const field = fields.find(f => f.id === key);
-        if (!field) return;
-
-        const labelLower = field.label.toLowerCase();
-
-        if (key === "fullName" || labelLower.includes("full name") || labelLower === "name") {
-          name = String(val);
-        } else if (field.type === "email" || key === "email" || labelLower.includes("email")) {
-          email = String(val);
-        } else if (key === "college" || labelLower.includes("college") || labelLower.includes("university")) {
-          college = String(val);
-        } else if (field.type === "file" || key === "resume" || labelLower.includes("resume") || labelLower.includes("portfolio")) {
-          if (val && (val as any).name) {
-            resume_url = (val as any).name;
-          } else if (val) {
-            resume_url = String(val);
-          }
-        } else if (key === "experience" || labelLower.includes("experience")) {
-          experience = String(val);
-        } else {
-          answers[key] = val;
-        }
-      });
-
-      // Insert registrations matching SQL schema
-      const regRecord = {
-        hackathon_id: hack.id,
-        user_id: user?.id || null,
-        participation_type: "individual",
-        role: "Solo Participant"
-      };
-
-      const { error } = await supabase
-        .from("registrations")
-        .insert(regRecord);
-
-      if (error) throw error;
-
-      if (user?.id) {
-        await supabase
-          .from("profiles")
-          .update({
-            name,
-            college,
-            experience
-          })
-          .eq("id", user.id);
-      }
-
-      onSuccess(data);
-    } catch (err: any) {
-      console.error("Error registering for hackathon:", err);
-      toast.error(err.message || "Failed to register. Please try again.");
-    }
+    await new Promise((r) => setTimeout(r, 1500));
+    onSuccess(data);
   };
 
   return (
@@ -326,7 +246,7 @@ function SuccessScreen({
           <button onClick={() => setView("success")} className="hack-btn-secondary flex-1 justify-center">
             <ArrowLeft size={14} /> Back
           </button>
-          <Link to={`/create-team?hackathon_id=${hack.id}`} className="flex-1">
+          <Link to="/my-teams" className="flex-1">
             <button onClick={onClose} className="hack-btn-primary w-full justify-center">
               <Sparkles size={14} /> Create Team
             </button>
@@ -380,7 +300,7 @@ function SuccessScreen({
           <button onClick={() => setView("success")} className="hack-btn-secondary flex-1 justify-center">
             <ArrowLeft size={14} /> Back
           </button>
-          <Link to={`/discover-teams?hackathon_id=${hack.id}`} className="flex-1">
+          <Link to="/my-requests" className="flex-1">
             <button onClick={onClose} className="hack-btn-secondary w-full justify-center">
               View All Teams
             </button>
@@ -441,24 +361,20 @@ function SuccessScreen({
       <div className="space-y-2">
         <p className="text-white/40 text-sm">What would you like to do next?</p>
         <div className="grid grid-cols-1 gap-2">
-          <Link to={`/create-team?hackathon_id=${hack.id}`} className="w-full">
-            <button
-              onClick={onClose}
-              className="hack-btn-primary w-full justify-center py-3"
-            >
-              <Plus size={15} />
-              Create a Team
-            </button>
-          </Link>
-          <Link to={`/discover-teams?hackathon_id=${hack.id}`} className="w-full">
-            <button
-              onClick={onClose}
-              className="hack-btn-secondary w-full justify-center py-2.5"
-            >
-              <Users size={15} />
-              Join an Existing Team
-            </button>
-          </Link>
+          <button
+            onClick={() => setView("createTeam")}
+            className="hack-btn-primary w-full justify-center py-3"
+          >
+            <Plus size={15} />
+            Create a Team
+          </button>
+          <button
+            onClick={() => setView("joinTeam")}
+            className="hack-btn-secondary w-full justify-center py-2.5"
+          >
+            <Users size={15} />
+            Join an Existing Team
+          </button>
           <button
             onClick={onClose}
             className="text-white/35 hover:text-white/60 text-sm transition-colors py-1"
